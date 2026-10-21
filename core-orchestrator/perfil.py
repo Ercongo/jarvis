@@ -141,3 +141,34 @@ def con_nombre(texto: str) -> str:
     if n == "Jarvis" or "Jarvis" not in texto:
         return texto
     return re.sub(r"\bJarvis\b", n, texto)
+
+
+# ---------------------------------------------------------------- desde la terminal (hasta que llegue el asistente)
+if __name__ == "__main__":
+    import argparse
+
+    a = argparse.ArgumentParser(description="Ver o cambiar el perfil del asistente.")
+    a.add_argument("--nombre")
+    a.add_argument("--color", help="#rrggbb")
+    a.add_argument("--genero", choices=["masculino", "femenino"])
+    a.add_argument("--idioma")
+    a.add_argument("--voz", help="modelo de Piper (p. ej. es_ES-davefx-medium) o ruta al .onnx")
+    a.add_argument("--hablante", type=int)
+    a.add_argument("--usuario", help="cómo se llama la persona")
+    a.add_argument("--trato", help="cómo quiere que la trate")
+    a.add_argument("--pantalla", help="salida donde va la interfaz (HDMI-1, DP-2…) o auto")
+    x = a.parse_args()
+    cambios: dict = {}
+    for k in ("nombre", "color", "genero", "idioma"):
+        if getattr(x, k):
+            cambios[k] = getattr(x, k)
+    if x.voz or x.hablante is not None:
+        cambios["voz"] = {k: v for k, v in (("modelo", x.voz), ("hablante", x.hablante)) if v is not None}
+    if x.usuario or x.trato:
+        cambios["usuario"] = {k: v for k, v in (("nombre", x.usuario), ("trato", x.trato)) if v}
+    if x.pantalla:
+        cambios["pantallas"] = {"interfaz": x.pantalla}
+    p = guardar(**cambios) if cambios else perfil()
+    print(json.dumps(p, ensure_ascii=False, indent=2))
+    if cambios:
+        print("Guardado. Reinicia el asistente para que lo coja todo.")

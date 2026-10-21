@@ -233,7 +233,7 @@ class Interfaz:
 
             def do_GET(self):
                 if self.path in ("/", "/index.html"):
-                    datos = (UI_DIR / "index.html").read_bytes()
+                    datos = interfaz_personalizada((UI_DIR / "index.html").read_text(encoding="utf-8")).encode()
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.send_header("Content-Length", str(len(datos)))
@@ -483,6 +483,29 @@ class Oido:
 NO_LETRAS = re.compile(r"[^a-záéíóúüñ]")
 VOCATIVOS = {"oye", "hola", "eh", "ey", "hey", "buenas", "bueno", "venga", "vale", "ok", "okey", "perdona", "oiga",
              "buenos", "dias", "tardes", "noches", "días", "porfa", "por", "favor", "y", "a", "ver"}
+
+
+def interfaz_personalizada(html: str) -> str:
+    """La interfaz con el nombre y el color del perfil. El <title> se queda en «Jarvis»: los scripts de pantallas
+    reconocen la ventana por él."""
+    p = perfil.perfil()
+    nombre = perfil.nombre()
+    color = str(p.get("color") or "#38e8ff").strip()
+    m = re.fullmatch(r"#?([0-9a-fA-F]{6})", color)
+    if m and m.group(1).lower() != "38e8ff":
+        h = m.group(1).lower()
+        r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+        html = (html.replace("#38e8ff", f"#{h}").replace("%2338e8ff", f"%23{h}")
+                .replace("56, 232, 255", f"{r}, {g}, {b}").replace("56,232,255", f"{r},{g},{b}"))
+    if nombre != "Jarvis":
+        siglas = ".".join(NO_LETRAS.sub("", nombre.upper().replace(" ", "")) or nombre.upper())
+        cuerpo, cierre = html.split("<title>", 1) if "<title>" in html else (html, "")
+        resto = cierre.split("</title>", 1)[1] if cierre else ""
+        titulo = "<title>" + cierre.split("</title>", 1)[0] + "</title>" if cierre else ""
+        resto = (resto.replace("J.A.R.V.I.S · JUST A RATHER VERY INTELLIGENT SYSTEM", f"{siglas} · ASISTENTE PERSONAL")
+                 .replace("J.A.R.V.I.S", siglas).replace("«Jarvis»", f"«{nombre}»").replace("de Jarvis", f"de {nombre}"))
+        html = cuerpo + titulo + resto
+    return html
 
 
 def separar_nombre(texto: str) -> tuple[bool, str]:
