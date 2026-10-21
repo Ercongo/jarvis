@@ -52,17 +52,9 @@ RE_TODAS = re.compile(r"\b(las dos pantallas|ambas pantallas|todas las pantallas
 
 
 def _geometrias() -> dict[str, str]:
-    """{'interna': 'WxH+X+Y', 'externa': …} según xrandr."""
-    try:
-        salida = subprocess.run(["xrandr", "--query"], capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return {}
-    geo = {}
-    for linea in salida.splitlines():
-        m = re.match(r"^(\S+) connected (?:primary )?(\d+x\d+\+\d+\+\d+)", linea)
-        if m:
-            geo["interna" if re.match(r"(eDP|LVDS)", m.group(1)) else "externa"] = m.group(2)
-    return geo
+    """{'trabajo': 'WxH+X+Y', 'interfaz': …}: la pantalla donde se trabaja y la de la interfaz (pantallas.py)."""
+    from pantallas import geometrias
+    return geometrias()
 
 
 def capturar_pantalla(cual: str = "portatil") -> Path | None:
@@ -75,7 +67,7 @@ def capturar_pantalla(cual: str = "portatil") -> Path | None:
             viejo.unlink(missing_ok=True)
     ruta = TMP / f"vision_pantalla_{int(time.time())}.jpg"
     geo = _geometrias()
-    clave = {"portatil": "interna", "monitor": "externa"}.get(cual)
+    clave = {"portatil": "trabajo", "monitor": "interfaz"}.get(cual)
     orden = ["scrot", "-o", "-q", "85"]
     if clave and geo.get(clave):
         w, h, x, y = map(int, re.match(r"(\d+)x(\d+)\+(\d+)\+(\d+)", geo[clave]).groups())

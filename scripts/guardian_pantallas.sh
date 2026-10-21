@@ -1,18 +1,21 @@
 #!/bin/bash
-# Guardián de pantallas: el monitor externo es solo para Jarvis.
-# Cualquier otra ventana que aparezca allí se mueve al portátil y se maximiza (una vez, al abrirse;
-# si luego la arrastras tú a mano, se respeta).
+# Guardián de pantallas: la pantalla de la interfaz es solo para el asistente.
+# Cualquier otra ventana que aparezca allí se mueve a la de trabajo y se maximiza (una vez, al abrirse;
+# si luego la arrastras tú a mano, se respeta). Qué pantalla es cada una lo decide pantallas.py.
 export DISPLAY="${DISPLAY:-:0}"
+J="${JARVIS_INSTALACION:-$HOME/jarvis}"
+M="${JARVIS_MOTOR:-$J/core-orchestrator}"
+PY="$J/venv/bin/python"; [ -x "$PY" ] || PY=python3
+LOGD="${JARVIS_DATOS:-$J}/logs"
 ID_JARVIS="$HOME/.cache/jarvis_ventana"
 declare -A vista movida
 ciclo=0
 
 geometrias() {
-    INT=$(xrandr --query | awk '/ connected/ && $1 ~ /^(eDP|LVDS)/ {print $1; exit}')
-    EXT=$(xrandr --query | awk -v i="$INT" '/ connected/ && $1 != i {print $1; exit}')
-    GI=$(xrandr --query | grep "^$INT connected" | grep -oE '[0-9]+x[0-9]+\+[0-9]+\+[0-9]+' | head -1)
-    GE=""
-    [ -n "$EXT" ] && GE=$(xrandr --query | grep "^$EXT connected" | grep -oE '[0-9]+x[0-9]+\+[0-9]+\+[0-9]+' | head -1)
+    DEDICADA=0; GEO_TRABAJO=""; GEO_INTERFAZ=""
+    eval "$(cd "$M" && "$PY" pantallas.py --shell 2>/dev/null)"
+    GI="$GEO_TRABAJO"; GE=""
+    [ "$DEDICADA" = "1" ] && GE="$GEO_INTERFAZ"           # con una sola pantalla no hay nada que vigilar
     IX=$(echo "$GI" | cut -d+ -f2); IY=$(echo "$GI" | cut -d+ -f3)
     EX=$(echo "$GE" | cut -d+ -f2); EW=$(echo "$GE" | cut -dx -f1)
 }
@@ -32,7 +35,7 @@ while true; do
         movida[$id]=$(( ${movida[$id]:-0} + 1 ))
         cx=$((x + w / 2))
         if [ "$cx" -ge "$EX" ] && [ "$cx" -lt "$((EX + EW))" ]; then
-            echo "$(date +%T) $id '$resto' -> portátil" >> "$HOME/jarvis/logs/guardian.log"
+            echo "$(date +%T) $id '$resto' -> pantalla de trabajo" >> "$LOGD/guardian.log"
             wmctrl -i -r "$id" -b remove,fullscreen 2>/dev/null
             wmctrl -i -r "$id" -b remove,maximized_vert,maximized_horz 2>/dev/null
             sleep 0.3

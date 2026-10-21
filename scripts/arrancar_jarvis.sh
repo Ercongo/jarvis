@@ -1,11 +1,16 @@
 #!/bin/bash
-# Arranca Jarvis: motor de voz en segundo plano + interfaz a pantalla completa en el monitor externo.
+# Arranca el asistente: motor de voz en segundo plano + interfaz a pantalla completa.
+# Con dos pantallas, la interfaz va en una para ella sola; con una, a pantalla completa sin estorbar
+# (lo decide core-orchestrator/pantallas.py según el PC y el perfil).
 # Lo lanza el inicio automático de Xfce; también puedes ejecutarlo a mano (alias: jarvis).
 
-J="$HOME/jarvis"
-LOG="$J/logs/jarvis.log"
+J="${JARVIS_INSTALACION:-$HOME/jarvis}"
+M="${JARVIS_MOTOR:-$J/core-orchestrator}"
+PY="$J/venv/bin/python"; [ -x "$PY" ] || PY=python3
+DATOS="${JARVIS_DATOS:-$J}"
+LOG="$DATOS/logs/jarvis.log"
 URL="http://127.0.0.1:8765/"
-mkdir -p "$J/logs"
+mkdir -p "$DATOS/logs"
 export JARVIS_WHISPER="${JARVIS_WHISPER:-base}"
 # export JARVIS_USUARIO="Tu nombre"      # descomenta para que te salude por tu nombre
 
@@ -41,28 +46,27 @@ fi
 [ -z "$DISPLAY" ] && exit 0
 xset s off -dpms 2>/dev/null
 
-# ---- pantallas: monitor externo a la izquierda (Jarvis), portátil a la derecha (principal, para trabajar)
-INTERNA=$(xrandr --query | awk '/ connected/ && $1 ~ /^(eDP|LVDS)/ {print $1; exit}')
-EXTERNA=$(xrandr --query | awk -v i="$INTERNA" '/ connected/ && $1 != i {print $1; exit}')
-if [ -n "$INTERNA" ] && [ -n "$EXTERNA" ]; then
-    xrandr --output "$INTERNA" --auto --primary --output "$EXTERNA" --auto --left-of "$INTERNA"
+# ---- pantallas: cuál es para la interfaz y cuál para trabajar (pantallas.py, según el PC y el perfil)
+eval "$(cd "$M" && "$PY" pantallas.py --shell 2>/dev/null)"
+if [ "$DEDICADA" = "1" ] && [ "$COLOCAR" != "no" ] && [ -n "$TRABAJO" ]; then
+    case "$COLOCAR" in izquierda) POS=--left-of ;; derecha) POS=--right-of ;; arriba) POS=--above ;; *) POS=--below ;; esac
+    xrandr --output "$TRABAJO" --auto --primary --output "$INTERFAZ" --auto $POS "$TRABAJO"
     sleep 2
+    eval "$(cd "$M" && "$PY" pantallas.py --shell 2>/dev/null)"        # posiciones nuevas
 fi
-# Barra de tareas e iconos en el portátil (la pantalla principal)
-if [ -n "$INTERNA" ] && command -v xfconf-query >/dev/null; then
+# Barra de tareas e iconos en la pantalla de trabajo
+if [ "$DEDICADA" = "1" ] && [ -n "$TRABAJO" ] && command -v xfconf-query >/dev/null; then
     for P in $(xfconf-query -c xfce4-panel -p /panels 2>/dev/null | grep -E '^[0-9]+$'); do
-        xfconf-query -c xfce4-panel -p "/panels/panel-$P/output-name" -n -t string -s "$INTERNA" 2>/dev/null
+        xfconf-query -c xfce4-panel -p "/panels/panel-$P/output-name" -n -t string -s "$TRABAJO" 2>/dev/null
     done
 fi
 
-GEOM=""
-[ -n "$EXTERNA" ] && GEOM=$(xrandr --query | grep "^$EXTERNA connected" | grep -oE '[0-9]+x[0-9]+\+[0-9]+\+[0-9]+' | head -1)
-POS_X=0; POS_Y=0
+GEOM=""; [ "$DEDICADA" = "1" ] && GEOM="$GEO_INTERFAZ"
+POS_X="${X_INTERFAZ:-0}"; POS_Y="${Y_INTERFAZ:-0}"
 if [ -n "$GEOM" ]; then
-    POS_X=$(echo "$GEOM" | cut -d+ -f2); POS_Y=$(echo "$GEOM" | cut -d+ -f3)
-    echo "Interfaz en $EXTERNA ($GEOM)"
+    echo "Interfaz en $INTERFAZ ($GEOM); trabajo en $TRABAJO"
 else
-    echo "No hay monitor externo: la interfaz irá en la pantalla del portátil."
+    echo "Una sola pantalla (${INTERFAZ:-?}): la interfaz va a pantalla completa y las ventanas se abren encima."
 fi
 
 # ---- esperar a que la interfaz responda (hasta 60 s)
@@ -76,14 +80,15 @@ PERFIL_NAV="$HOME/.config/jarvis-navegador"
 if command -v chromium >/dev/null || command -v chromium-browser >/dev/null || command -v google-chrome >/dev/null; then
     NAV=$(command -v chromium || command -v chromium-browser || command -v google-chrome)
     "$NAV" --app="$URL" --user-data-dir="$PERFIL_NAV" --window-position="$POS_X,$POS_Y" \
-           --noerrdialogs --disable-infobars --no-first-run --start-fullscreen >/dev/null 2>&1 &
+           --noerrdialogs --disable-infobars --no-first-run $([ "$VENTANA" = "1" ] || echo --start-fullscreen) >/dev/null 2>&1 &
 elif command -v firefox >/dev/null; then
     # Firefox en snap solo puede usar carpetas dentro de ~/snap/firefox: el perfil de Jarvis va ahí.
     PERFIL_FF="$HOME/snap/firefox/common/jarvis-perfil"
     mkdir -p "$PERFIL_FF"
-    bash "$J/sin_aceleracion.sh"          # sin aceleración gráfica: la radeon se cuelga con Firefox
+    bash "$J/sin_aceleracion.sh"          # preferencias del navegador (y sin aceleración si la gráfica lo pide)
     pkill -f "jarvis-perfil" 2>/dev/null; sleep 1
-    firefox --new-instance --no-remote --profile "$PERFIL_FF" --kiosk "$URL" >"$J/logs/navegador.log" 2>&1 &
+    firefox --new-instance --no-remote --profile "$PERFIL_FF" $([ "$VENTANA" = "1" ] || echo --kiosk) "$URL" \
+        >"$DATOS/logs/navegador.log" 2>&1 &
 else
     xdg-open "$URL" >/dev/null 2>&1 &
 fi
@@ -103,12 +108,12 @@ wmctrl -i -r "$JID" -b remove,fullscreen 2>/dev/null
 wmctrl -i -r "$JID" -b remove,maximized_vert,maximized_horz 2>/dev/null
 wmctrl -i -r "$JID" -e "0,$POS_X,$POS_Y,-1,-1" 2>/dev/null
 sleep 0.5
-wmctrl -i -r "$JID" -b add,fullscreen 2>/dev/null
+[ "$VENTANA" = "1" ] || wmctrl -i -r "$JID" -b add,fullscreen 2>/dev/null
 [ -n "$GEOM" ] && wmctrl -i -r "$JID" -b add,above 2>/dev/null   # siempre visible, solo si está en su propio monitor
 mkdir -p "$HOME/.cache"
 echo "$JID" > "$HOME/.cache/jarvis_ventana"
 
-# Guardián: todo lo que se abra en el monitor de Jarvis se pasa al portátil (solo uno a la vez)
+# Guardián: todo lo que se abra en la pantalla de la interfaz se pasa a la de trabajo (solo uno a la vez)
 if [ -n "$GEOM" ] && ! pgrep -xf "bash $J/guardian_pantallas.sh" >/dev/null; then   # exacto: no confundirse con otros comandos
     setsid -f bash "$J/guardian_pantallas.sh" >/dev/null 2>&1
 fi

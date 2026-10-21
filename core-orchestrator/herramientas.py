@@ -65,16 +65,10 @@ def _anotar(texto: str) -> None:
 
 
 def pantalla_portatil() -> tuple[int, int, int, int] | None:
-    """(ancho, alto, x, y) de la pantalla del portátil (eDP/LVDS)."""
-    try:
-        r = subprocess.run(["xrandr", "--query"], capture_output=True, text=True, timeout=3)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    for linea in r.stdout.splitlines():
-        if re.match(r"^(eDP|LVDS)\S*\s+connected", linea):
-            m = re.search(r"(\d+)x(\d+)\+(\d+)\+(\d+)", linea)
-            return tuple(int(v) for v in m.groups()) if m else None
-    return None
+    """(ancho, alto, x, y) de la pantalla de trabajo, si la interfaz tiene otra para ella sola (pantallas.py).
+    Con una sola pantalla devuelve None y las ventanas se quedan donde las ponga el escritorio."""
+    from pantallas import trabajo_geo
+    return trabajo_geo()
 
 
 def _id_jarvis() -> int | None:
