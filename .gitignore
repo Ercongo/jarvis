@@ -1,0 +1,40 @@
+# Nunca al repositorio: claves, permisos, datos personales y cosas generadas
+*.json
+!core-orchestrator/ui/**/*.json
+secretos*
+*.age
+*.jarvisperfil
+.env
+*.token
+*.key
+*.pem
+client_secret*
+
+# datos de cada persona
+memoria*
+calendario.ics
+saber/
+notas/
+logs/
+copias_codigo/
+backups/
+creados*
+instalados*
+
+# entornos y modelos (se descargan al instalar)
+venv/
+venv_*/
+voces/
+models/
+*.onnx
+*.onnx.json
+__pycache__/
+*.pyc
+
+# paquetes y temporales
+*.tar.gz
+*.tgz
+*.zip
+*.log
+.DS_Store
+Thumbs.db

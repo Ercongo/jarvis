@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis</title>
+<style>
+  @font-face { font-family: "Orbitron"; font-weight: 500; src: url(/fuentes/orbitron-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Orbitron"; font-weight: 700; src: url(/fuentes/orbitron-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Rajdhani"; font-weight: 400; src: url(/fuentes/rajdhani-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Rajdhani"; font-weight: 500; src: url(/fuentes/rajdhani-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Rajdhani"; font-weight: 600; src: url(/fuentes/rajdhani-latin-600-normal.woff2) format("woff2"); }
+  :root {
+    --fondo: #01040a;
+    --tinta: #cdf7ff;
+    --clara: #effdff;
+    --tenue: #4f8593;
+    --acento: #38e8ff;
+    --acento2: #ffb547;          /* ámbar de aviso, como los HUD de las películas */
+    --peligro: #ff5c6c;
+    --linea: rgba(56, 232, 255, .28);
+    --velo: rgba(4, 22, 34, .55);
+    --titulo: "Orbitron", "DejaVu Sans", sans-serif;
+    --texto: "Rajdhani", "Ubuntu", "DejaVu Sans", sans-serif;
+    --mono: "DejaVu Sans Mono", "Ubuntu Mono", monospace;
+  }
+  html, body { margin: 0; height: 100%; background: var(--fondo); overflow: hidden; cursor: none; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+  /* capas fijas: rejilla hexagonal, líneas de barrido y viñeta (estáticas: no cuestan nada al portátil) */
+  .capa { position: fixed; inset: 0; pointer-events: none; }
+  #hex { opacity: .07; background-size: 56px 97px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cpath d='M28 0L56 16.2V48.5L28 64.7L0 48.5V16.2Z M28 64.7V97 M0 48.5L-28 64.7 M56 48.5L84 64.7' fill='none' stroke='%2338e8ff' stroke-width='1'/%3E%3C/svg%3E"); }
+  #rayas { background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.22) 2px 3px); }
+  #vineta { background: radial-gradient(ellipse at 50% 46%, rgba(0,0,0,0) 45%, rgba(0,0,0,.75) 100%); }
+
+  /* marco con esquinas */
+  .esq { position: fixed; width: 46px; height: 46px; border: 2px solid var(--acento); opacity: .6; pointer-events: none; }
+  .esq.a { top: 14px; left: 14px; border-right: 0; border-bottom: 0; }
+  .esq.b { top: 14px; right: 14px; border-left: 0; border-bottom: 0; }
+  .esq.c { bottom: 14px; left: 14px; border-right: 0; border-top: 0; }
+  .esq.d { bottom: 14px; right: 14px; border-left: 0; border-top: 0; }
+
+  .hud { position: fixed; color: var(--tinta); font-family: var(--texto); pointer-events: none; }
+
+  /* ----- barra superior */
+  #marca { top: 26px; left: 40px; }
+  #marca b { display: block; font-family: var(--titulo); font-weight: 700; font-size: 30px; letter-spacing: .42em;
+             color: var(--clara); text-shadow: 0 0 14px rgba(56,232,255,.6); }
+  #marca small { display: block; font-size: 11px; letter-spacing: .32em; color: var(--tenue); text-transform: uppercase; margin-top: 2px; }
+  #estado { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; padding: 3px 12px 3px 10px;
+            font-family: var(--titulo); font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--acento);
+            border: 1px solid currentColor; clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+  #estado::before { content: ""; width: 7px; height: 7px; background: currentColor; border-radius: 50%; box-shadow: 0 0 8px currentColor;
+                    }
+  @keyframes latido { 50% { opacity: .25; } }
+
+  #centro-sup { top: 26px; left: 50%; transform: translateX(-50%); text-align: center; font-family: var(--titulo);
+                font-size: 10px; letter-spacing: .38em; color: var(--tenue); }
+  #centro-sup .regla { width: 360px; height: 9px; margin: 6px auto 0;
+    background: repeating-linear-gradient(90deg, var(--linea) 0 1px, transparent 1px 12px); border-top: 1px solid var(--linea); }
+  #centro-sup span { color: var(--acento); }
+
+  #reloj { top: 22px; right: 40px; text-align: right; }
+  #reloj b { display: block; font-family: var(--titulo); font-weight: 500; font-size: 40px; letter-spacing: .1em; color: var(--clara);
+             text-shadow: 0 0 16px rgba(56,232,255,.5); }
+  #reloj b em { font-style: normal; font-size: 16px; color: var(--acento); margin-left: 4px; }
+  #fecha { font-size: 14px; letter-spacing: .25em; text-transform: uppercase; color: var(--tenue); }
+
+  /* ----- tarjetas en ángulo */
+  .tarjeta { position: relative; background: var(--velo); border: 1px solid var(--linea); padding: 12px 14px 12px;
+             margin-bottom: 14px; clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px)); }
+  .tarjeta::before { content: ""; position: absolute; top: 0; left: 0; width: 38%; height: 2px; background: var(--acento); box-shadow: 0 0 8px var(--acento); }
+  .tarjeta h3 { margin: 0 0 8px; display: flex; justify-content: space-between; font-family: var(--titulo); font-weight: 500;
+                font-size: 10px; letter-spacing: .3em; color: var(--acento); text-transform: uppercase; }
+  .tarjeta h3 small { color: var(--tenue); letter-spacing: .15em; font-size: 9px; }
+  .linea { font-size: 15px; color: #d4f3fa; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .linea i { font-style: normal; font-family: var(--titulo); font-size: 10px; letter-spacing: .12em; color: var(--acento); margin-right: 9px; }
+
+  #panel { top: 140px; left: 40px; width: 330px; opacity: 0; transition: opacity .8s; }
+  #p-tiempo .grande { font-family: var(--titulo); font-size: 34px; color: var(--clara); }
+  #p-tiempo .grande small { font-size: 13px; color: var(--tenue); margin-left: 10px; letter-spacing: .1em; }
+
+  /* medidores circulares */
+  #medidores { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; }
+  .medidor { position: relative; }
+  .medidor svg { width: 66px; height: 66px; transform: rotate(-90deg); }
+  .medidor circle { fill: none; stroke-width: 4; }
+  .medidor .fondo-m { stroke: rgba(56,232,255,.12); }
+  .medidor .marca-m { stroke: rgba(56,232,255,.35); stroke-width: 1; stroke-dasharray: 1 5.28; }
+  .medidor .valor-m { stroke: var(--acento); stroke-linecap: butt; stroke-dasharray: 0 999; transition: stroke-dasharray 1s, stroke .6s;
+                      }
+  .medidor .alerta { stroke: var(--peligro); }
+  .medidor b { position: absolute; top: 22px; left: 0; right: 0; font-family: var(--titulo); font-weight: 500; font-size: 13px; color: var(--clara); }
+  .medidor span { display: block; font-family: var(--titulo); font-size: 9px; letter-spacing: .2em; color: var(--tenue); }
+  .enlaces { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; margin-top: 10px; }
+  .enlaces .linea { font-size: 13px; }
+  .punto { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--tenue); margin-right: 6px; vertical-align: 1px; }
+  .punto.ok { background: #5dffb0; box-shadow: 0 0 6px #5dffb0; }
+  .punto.mal { background: var(--acento2); box-shadow: 0 0 6px var(--acento2); }
+
+  /* ----- columna derecha */
+  #derecha { top: 130px; right: 40px; width: min(480px, 30vw); }
+  #resultados { opacity: 0; transition: opacity .6s; display: none; }
+  #resultados ol { margin: 0; padding: 0; list-style: none; counter-reset: n; }
+  #resultados li { counter-increment: n; display: block; padding: 6px 10px; margin-bottom: 3px; font-size: 16px; color: #e2fbff;
+                   background: linear-gradient(90deg, rgba(56,232,255,.10), rgba(56,232,255,0)); border-left: 2px solid var(--acento);
+                   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; animation: entra .35s ease-out backwards; }
+  #resultados li::before { content: counter(n, decimal-leading-zero); font-family: var(--titulo); font-size: 11px; color: var(--acento); display: inline-block; width: 2.4em; }
+  @keyframes entra { from { opacity: 0; transform: translateX(16px); } }
+  #registro .fila { display: grid; grid-template-columns: 54px 1fr; gap: 8px; font-family: var(--mono); font-size: 11.5px;
+                    line-height: 1.55; color: #9fd8e4; white-space: nowrap; overflow: hidden; animation: entra .35s ease-out backwards; }
+  #registro .fila time { color: var(--tenue); }
+  #registro .fila span { overflow: hidden; text-overflow: ellipsis; }
+  #registro .fila.yo span { color: var(--clara); }
+  #registro .fila.aviso span { color: var(--acento2); }
+  #saber .cifras { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; }
+  #saber .cifras b { display: block; font-family: var(--titulo); font-weight: 500; font-size: 22px; color: var(--clara); }
+  #saber .cifras span { font-family: var(--titulo); font-size: 8.5px; letter-spacing: .2em; color: var(--tenue); }
+
+  /* ----- subtítulos */
+  #subtitulos { left: 50%; bottom: 6.5vh; transform: translateX(-50%); width: min(1040px, 84vw); text-align: center; }
+  #usuario { font-size: 18px; letter-spacing: .04em; color: var(--tenue); min-height: 1.4em; transition: opacity .6s; }
+  #jarvis { font-size: 26px; font-weight: 500; line-height: 1.4; margin-top: 8px; min-height: 1.4em; color: var(--clara);
+            text-shadow: 0 0 18px rgba(56, 232, 255, .5); transition: opacity .6s; }
+  #jarvis.escribiendo::after { content: "▍"; color: var(--acento); margin-left: 2px; animation: latido 1s steps(2, jump-none) infinite; }
+  #subtitulos .regla { height: 1px; margin: 14px auto 0; width: 60%;
+                       background: linear-gradient(90deg, transparent, var(--acento), transparent); opacity: .5; }
+
+  #pie { bottom: 22px; left: 40px; font-family: var(--titulo); font-size: 9px; letter-spacing: .3em; color: var(--tenue); }
+  #conexion { bottom: 22px; right: 40px; font-family: var(--titulo); font-size: 10px; letter-spacing: .2em; color: var(--peligro);
+              opacity: 0; transition: opacity .4s; }
+
+  /* ----- secuencia de arranque */
+  #arranque { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 460px; font-family: var(--mono);
+              font-size: 13px; line-height: 1.7; color: var(--acento); pointer-events: none; transition: opacity 1s; z-index: 5;
+              background: rgba(1,4,10,.82); padding: 18px 22px; border: 1px solid var(--linea); }
+  #arranque .ok { color: #5dffb0; float: right; }
+  #arranque.fuera { opacity: 0; }
+
+  @media (max-width: 1100px) { #derecha { display: none; } #panel { width: 280px; } }
+</style>
+</head>
+<body>
+<canvas id="lienzo"></canvas>
+<div class="esq a"></div><div class="esq b"></div><div class="esq c"></div><div class="esq d"></div>
+
+<div class="hud" id="marca"><b>J.A.R.V.I.S</b><small>Asistente personal · núcleo local</small><div id="estado">Iniciando</div></div>
+<div class="hud" id="centro-sup">PROTOCOLO <span>MAYORDOMO</span> · ACTIVO <span id="activo">00:00</span><div class="regla"></div></div>
+<div class="hud" id="reloj"><b id="hora">--:--</b><span id="fecha"></span></div>
+
+<div class="hud" id="panel">
+  <section class="tarjeta" id="p-tiempo"><h3>Meteorología <small id="p-ciudad"></small></h3>
+    <div class="grande" id="p-temp">--°</div><div class="linea" id="p-cielo" style="white-space: normal"></div></section>
+  <section class="tarjeta"><h3>Agenda <small>próximo</small></h3><div id="p-recs"><div class="linea">Ninguno</div></div></section>
+  <section class="tarjeta"><h3>Diagnóstico <small>sistema</small></h3>
+    <div id="medidores">
+      <div class="medidor" id="m-cpu"></div><div class="medidor" id="m-ram"></div>
+      <div class="medidor" id="m-temp"></div><div class="medidor" id="m-disco"></div>
+    </div>
+    <div class="linea" id="fila-bat" style="margin-top:6px"><i>BATERÍA</i><span id="v-bat">--</span></div>
+    <div class="enlaces">
+      <div class="linea"><span class="punto" id="d-cam"></span><i>CÁMARA</i><span id="p-cam">--</span></div>
+      <div class="linea"><span class="punto" id="d-cerebro"></span><i>CEREBRO</i><span id="p-cerebro">--</span></div>
+      <div class="linea"><span class="punto" id="d-google"></span><i>GOOGLE</i><span id="p-google">--</span></div>
+      <div class="linea"><span class="punto ok" id="d-red"></span><i>ENLACE</i><span id="p-red">núcleo</span></div>
+    </div>
+  </section>
+</div>
+
+<div class="hud" id="derecha">
+  <section class="tarjeta" id="resultados"><h3><span id="res-titulo"></span><small>datos</small></h3><ol id="res-lista"></ol></section>
+  <section class="tarjeta" id="saber"><h3>Memoria <small id="s-ultimo">aprendizaje</small></h3>
+    <div class="cifras"><div><b id="s-hechos">0</b><span>SOBRE USTED</span></div><div><b id="s-notas">0</b><span>INVESTIGADO</span></div><div><b id="s-docs">0</b><span>DOCUMENTOS</span></div></div></section>
+  <section class="tarjeta" id="registro"><h3>Registro <small>actividad</small></h3><div id="r-filas"></div></section>
+</div>
+
+<div class="hud" id="subtitulos"><div id="usuario"></div><div id="jarvis"></div><div class="regla"></div></div>
+<div class="hud" id="pie">MARK XXIII · <span id="pie-estado">EN LÍNEA</span></div>
+<div class="hud" id="conexion">⚠ SIN ENLACE CON EL NÚCLEO</div>
+<div id="arranque"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const hhmm = (d = new Date()) => d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+// ---------------------------------------------------------------- secuencia de arranque
+(function arranque() {
+  const caja = $("arranque");
+  const pasos = ["Núcleo de voz", "Reconocimiento auditivo", "Enlace neuronal (Groq)", "Memoria a largo plazo", "Sensores del sistema", "Protocolo mayordomo"];
+  let i = 0;
+  const sig = () => {
+    if (i < pasos.length) {
+      const d = document.createElement("div");
+      d.innerHTML = "› " + pasos[i] + " <span class='ok'>[ OK ]</span>";
+      caja.appendChild(d); i++; setTimeout(sig, 230);
+    } else { setTimeout(() => caja.classList.add("fuera"), 500); setTimeout(() => caja.remove(), 1600); }
+  };
+  caja.textContent = "INICIALIZANDO J.A.R.V.I.S…"; setTimeout(sig, 300);
+})();
+
+// ---------------------------------------------------------------- estado que llega de Jarvis
+const ESTADOS = {
+  arrancando: { txt: "Iniciando sistemas", col: [56, 232, 255], vel: 0.6, brillo: 0.45 },
+  reposo:     { txt: "En espera · diga «Jarvis»", col: [56, 232, 255], vel: 1.0, brillo: 0.55 },
+  escuchando: { txt: "Escuchando", col: [120, 250, 255], vel: 1.8, brillo: 0.95 },
+  analizando: { txt: "Procesando audio", col: [140, 170, 255], vel: 2.4, brillo: 0.75 },
+  pensando:   { txt: "Analizando", col: [255, 181, 71], vel: 3.2, brillo: 0.85 },
+  hablando:   { txt: "Respondiendo", col: [80, 240, 255], vel: 1.4, brillo: 1.0 },
+  error:      { txt: "Fallo", col: [255, 92, 108], vel: 0.4, brillo: 0.6 },
+};
+let estado = "arrancando", detalle = "";
+let nivelMic = 0;
+let voz = { env: [], paso: 0.04, t0: 0 };
+let col = [...ESTADOS.arrancando.col], vel = 0.6, brillo = 0.45, amp = 0;
+
+function registrar(texto, clase = "") {
+  if (!texto) return;
+  const filas = $("r-filas");
+  const d = document.createElement("div"); d.className = "fila " + clase;
+  const t = document.createElement("time"); t.textContent = new Date().toLocaleTimeString("es-ES");
+  const s = document.createElement("span"); s.textContent = texto; s.title = texto;
+  d.append(t, s); filas.prepend(d);
+  while (filas.childNodes.length > 9) filas.lastChild.remove();
+}
+
+function ponerEstado(e, d) {
+  const antes = estado;
+  estado = ESTADOS[e] ? e : "reposo";
+  detalle = d || "";
+  $("estado").textContent = detalle || ESTADOS[estado].txt;
+  $("estado").style.color = `rgb(${ESTADOS[estado].col.join(",")})`;
+  $("pie-estado").textContent = (detalle || ESTADOS[estado].txt).toUpperCase();
+  if (estado === "error") registrar(detalle || "Fallo", "aviso");
+  else if (detalle && antes !== estado && estado !== "reposo") registrar(detalle);
+}
+
+// texto de Jarvis "tecleado": se escribe al ritmo de la voz
+let temporizadorSub = null, maquina = null;
+function escribir(texto) {
+  const el = $("jarvis"); clearInterval(maquina);
+  el.textContent = ""; el.classList.add("escribiendo");
+  if (!texto) { el.classList.remove("escribiendo"); return; }
+  let i = 0; const paso = Math.max(1, Math.ceil(texto.length / 90));
+  maquina = setInterval(() => {
+    i += paso; el.textContent = texto.slice(0, i);
+    if (i >= texto.length) { clearInterval(maquina); el.classList.remove("escribiendo"); }
+  }, 28);
+}
+function ponerTextos(ev) {
+  if ("usuario" in ev) {
+    $("usuario").textContent = ev.usuario ? "› " + ev.usuario : ""; $("usuario").style.opacity = 1;
+    if (ev.usuario) registrar(ev.usuario, "yo");
+  }
+  if ("jarvis" in ev) {
+    escribir(ev.jarvis || ""); $("jarvis").style.opacity = 1;
+    if (ev.jarvis) registrar("J: " + ev.jarvis);
+  }
+  clearTimeout(temporizadorSub);
+  temporizadorSub = setTimeout(() => { $("usuario").style.opacity = 0; $("jarvis").style.opacity = 0; }, 20000);
+}
+
+let temporizadorRes = null;
+function ponerResultados(ev) {
+  $("res-titulo").textContent = ev.titulo || "Resultados";
+  const ol = $("res-lista"); ol.textContent = "";
+  (ev.items || []).slice(0, 8).forEach((item, k) => {
+    const li = document.createElement("li"); li.textContent = item; li.title = item;
+    li.style.animationDelay = (k * 70) + "ms"; ol.appendChild(li);
+  });
+  const caja = $("resultados"); caja.style.display = "block";
+  requestAnimationFrame(() => { caja.style.opacity = 1; });
+  registrar("▸ " + (ev.titulo || "Resultados"));
+  clearTimeout(temporizadorRes);
+  temporizadorRes = setTimeout(() => { caja.style.opacity = 0; setTimeout(() => { caja.style.display = "none"; }, 700); }, 90000);
+}
+
+// medidores circulares
+const CIRC = 2 * Math.PI * 26;
+function crearMedidor(id, nombre) {
+  $(id).innerHTML = `<svg viewBox="0 0 66 66"><circle class="fondo-m" cx="33" cy="33" r="26"/>
+    <circle class="marca-m" cx="33" cy="33" r="30.5"/><circle class="valor-m" cx="33" cy="33" r="26"/></svg><b>--</b><span>${nombre}</span>`;
+}
+[["m-cpu", "CPU"], ["m-ram", "RAM"], ["m-temp", "TEMP"], ["m-disco", "DISCO"]].forEach(([i, n]) => crearMedidor(i, n));
+function medidor(id, pct, texto, alerta) {
+  const c = $(id).querySelector(".valor-m");
+  const p = Math.max(0, Math.min(100, pct || 0)) / 100;
+  c.style.strokeDasharray = `${(p * CIRC).toFixed(1)} 999`;
+  c.classList.toggle("alerta", !!alerta);
+  $(id).querySelector("b").textContent = texto;
+}
+function punto(id, txt) {
+  const t = (txt || "").toLowerCase();
+  const ok = /(activ|conect|en l[ií]nea|groq|vigil|lista|ok|disponible)/.test(t) && !/(sin |no |desconect|apagad|error|fall)/.test(t);
+  const mal = /(sin |no |desconect|error|fall|local)/.test(t);
+  $(id).className = "punto" + (ok ? " ok" : mal ? " mal" : "");
+}
+
+function ponerPanel(ev) {
+  const t = ev.tiempo;
+  $("p-tiempo").style.display = t ? "" : "none";
+  if (t) {
+    $("p-temp").innerHTML = ""; $("p-temp").append(t.temp + "°");
+    const s = document.createElement("small"); s.textContent = `${t.min}° / ${t.max}°`; $("p-temp").appendChild(s);
+    $("p-ciudad").textContent = t.ciudad || "";
+    $("p-cielo").textContent = t.cielo + (t.lluvia >= 30 ? ` · lluvia ${t.lluvia}%` : "");
+  }
+  const recs = $("p-recs"); recs.textContent = "";
+  for (const r of (ev.recordatorios || [])) {
+    const d = document.createElement("div"); d.className = "linea";
+    const i = document.createElement("i"); i.textContent = r.cuando; d.appendChild(i);
+    d.appendChild(document.createTextNode(r.texto)); recs.appendChild(d);
+  }
+  if (!recs.childNodes.length) { const d = document.createElement("div"); d.className = "linea"; d.textContent = "Sin compromisos"; recs.appendChild(d); }
+  const s = ev.sistema || {};
+  medidor("m-cpu", s.cpu, (s.cpu ?? "--") + "%", s.cpu >= 90);
+  medidor("m-ram", s.ram, (s.ram ?? "--") + "%", s.ram >= 90);
+  medidor("m-temp", s.temp, s.temp != null ? s.temp + "°" : "--", s.temp >= 85);
+  medidor("m-disco", s.disco_usado, s.disco_libre != null ? Math.round(s.disco_libre) + "G" : "--", s.disco_usado >= 95);
+  $("fila-bat").style.display = s.bat != null ? "" : "none";
+  if (s.bat != null) $("v-bat").textContent = s.bat + "%" + (s.bat_estado === "charging" ? " · cargando" : "");
+  $("panel").style.opacity = 1;
+}
+
+function ponerSaber(ev) {
+  if (ev.hechos != null) $("s-hechos").textContent = ev.hechos;
+  if (ev.notas != null) $("s-notas").textContent = ev.notas;
+  if (ev.docs != null) $("s-docs").textContent = ev.docs;
+  if (ev.ultimo) { $("s-ultimo").textContent = ev.ultimo; registrar("✦ Aprendido: " + ev.ultimo); }
+}
+
+function conectar() {
+  const fuente = new EventSource("/eventos");
+  fuente.onopen = () => { $("conexion").style.opacity = 0; $("d-red").className = "punto ok"; $("p-red").textContent = "núcleo"; };
+  fuente.onerror = () => { $("conexion").style.opacity = 1; $("d-red").className = "punto mal"; $("p-red").textContent = "perdido"; };
+  fuente.onmessage = (m) => {
+    let ev; try { ev = JSON.parse(m.data); } catch { return; }
+    if (ev.tipo !== "nivel" || ev.v > 0.35) ultimaActividad = performance.now();
+    if (ev.tipo === "estado") ponerEstado(ev.estado, ev.detalle);
+    else if (ev.tipo === "texto") ponerTextos(ev);
+    else if (ev.tipo === "nivel") nivelMic = ev.v;
+    else if (ev.tipo === "resultados") ponerResultados(ev);
+    else if (ev.tipo === "panel") ponerPanel(ev);
+    else if (ev.tipo === "saber") ponerSaber(ev);
+    else if (ev.tipo === "actividad") registrar(ev.texto, "aviso");
+    else if (ev.tipo === "camara") { $("p-cam").textContent = ev.estado; punto("d-cam", ev.estado); $("panel").style.opacity = 1; }
+    else if (ev.tipo === "cerebro") { $("p-cerebro").textContent = ev.estado; punto("d-cerebro", ev.estado); }
+    else if (ev.tipo === "google") { $("p-google").textContent = ev.estado; punto("d-google", ev.estado); }
+    else if (ev.tipo === "voz") voz = { env: ev.env || [], paso: ev.paso || 0.04, t0: performance.now() };
+  };
+}
+conectar();
+
+// ---------------------------------------------------------------- reloj
+const inicio = Date.now();
+function reloj() {
+  const d = new Date();
+  $("hora").innerHTML = "";
+  $("hora").append(hhmm(d));
+  const s = document.createElement("em"); s.textContent = String(d.getSeconds()).padStart(2, "0"); $("hora").appendChild(s);
+  $("fecha").textContent = d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+  const m = Math.floor((Date.now() - inicio) / 60000);
+  $("activo").textContent = String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+}
+reloj(); setInterval(reloj, 1000);
+
+// ---------------------------------------------------------------- lienzo
+// Se dibuja a resolución reducida y el navegador lo escala: el portátil es modesto (sin aceleración gráfica).
+const lienzo = $("lienzo"), ctx = lienzo.getContext("2d");
+let W = 0, H = 0, ESC = 1;
+const rgba = (c, a) => `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+const TAU = Math.PI * 2;
+
+// Fondo fijo y anillo de texto: se pintan una vez en lienzos aparte y solo se rehacen si cambia el color.
+const fondo = document.createElement("canvas"), fctx = fondo.getContext("2d");
+const anillo = document.createElement("canvas"), actx = anillo.getContext("2d");
+let fondoCol = null, anilloCol = null, R = 100;
+function pintarFondo(c) {
+  fondo.width = W; fondo.height = H;
+  const cx = W / 2, cy = H * 0.46;
+  const g = fctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
+  g.addColorStop(0, rgba(c.map(v => v * 0.10), 1));
+  g.addColorStop(1, "#01030a");
+  fctx.fillStyle = g; fctx.fillRect(0, 0, W, H);
+  const horizonte = H * 0.74;
+  fctx.lineWidth = 1; fctx.strokeStyle = rgba(c, 0.06);
+  for (let i = -14; i <= 14; i++) {
+    fctx.beginPath(); fctx.moveTo(cx + i * W * 0.012, horizonte); fctx.lineTo(cx + i * W * 0.11, H); fctx.stroke();
+  }
+  // rejilla hexagonal suave (antes era una capa CSS que se recomponía en cada fotograma)
+  fctx.strokeStyle = rgba(c, 0.045); fctx.lineWidth = 1;
+  const lado = Math.max(14, W / 48), hh = lado * Math.sqrt(3);
+  for (let y = 0, fila = 0; y < H + hh; y += hh / 2, fila++) {
+    for (let x = (fila % 2) * lado * 1.5; x < W + lado * 3; x += lado * 3) {
+      fctx.beginPath();
+      for (let k = 0; k <= 6; k++) {
+        const a = k / 6 * Math.PI * 2;
+        k ? fctx.lineTo(x + Math.cos(a) * lado, y + Math.sin(a) * lado) : fctx.moveTo(x + lado, y);
+      }
+      fctx.stroke();
+    }
+  }
+  // viñeta
+  const vg = fctx.createRadialGradient(cx, cy, Math.min(W, H) * 0.35, cx, cy, Math.max(W, H) * 0.75);
+  vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.7)");
+  fctx.fillStyle = vg; fctx.fillRect(0, 0, W, H);
+  // retícula fina con cotas a ambos lados del núcleo
+  fctx.strokeStyle = rgba(c, 0.18); fctx.fillStyle = rgba(c, 0.35);
+  fctx.font = `${Math.max(7, R * 0.07)}px monospace`;
+  for (let k = -5; k <= 5; k++) {
+    const y = cy + k * R * 0.22;
+    fctx.beginPath(); fctx.moveTo(cx - R * 2.15, y); fctx.lineTo(cx - R * (k % 5 ? 2.05 : 1.98), y); fctx.stroke();
+    fctx.beginPath(); fctx.moveTo(cx + R * 2.15, y); fctx.lineTo(cx + R * (k % 5 ? 2.05 : 1.98), y); fctx.stroke();
+    if (k % 5 === 0) fctx.fillText(String(k * 10).padStart(3, " "), cx + R * 2.2, y + 3);
+  }
+  fctx.beginPath(); fctx.moveTo(cx - R * 2.15, cy - R * 1.1); fctx.lineTo(cx - R * 2.15, cy + R * 1.1); fctx.stroke();
+  fctx.beginPath(); fctx.moveTo(cx + R * 2.15, cy - R * 1.1); fctx.lineTo(cx + R * 2.15, cy + R * 1.1); fctx.stroke();
+  fondoCol = c.map(v => Math.round(v));
+}
+function pintarAnillo(c) {
+  const lado = Math.ceil(R * 3.5); anillo.width = anillo.height = lado;
+  actx.translate(lado / 2, lado / 2);
+  const texto = " J.A.R.V.I.S · JUST A RATHER VERY INTELLIGENT SYSTEM · PROTOCOLO MAYORDOMO · ";
+  actx.font = `600 ${Math.max(7, R * 0.075)}px monospace`; actx.fillStyle = rgba(c, 0.55);
+  actx.textAlign = "center"; actx.textBaseline = "middle";
+  const n = texto.length;
+  for (let i = 0; i < n; i++) {
+    actx.save(); actx.rotate(i / n * TAU); actx.fillText(texto[i], 0, -R * 1.72); actx.restore();
+  }
+  // marcas grandes del anillo exterior (también fijas: el lienzo entero gira)
+  for (let i = 0; i < 144; i++) {
+    const largo = i % 12 === 0 ? 0.09 : i % 4 === 0 ? 0.045 : 0.02;
+    const a = i / 144 * TAU;
+    actx.strokeStyle = rgba(c, i % 12 === 0 ? 0.8 : 0.35);
+    actx.lineWidth = i % 12 === 0 ? 2 : 1;
+    actx.beginPath();
+    actx.moveTo(Math.cos(a) * R * 1.62, Math.sin(a) * R * 1.62);
+    actx.lineTo(Math.cos(a) * R * (1.62 - largo), Math.sin(a) * R * (1.62 - largo));
+    actx.stroke();
+  }
+  anilloCol = c.map(v => Math.round(v));
+}
+function medir() {
+  ESC = Math.min(1, 640 / innerWidth);           // lienzo pequeño: el navegador lo escala (sin gráfica acelerada)
+  W = lienzo.width = Math.round(innerWidth * ESC);
+  H = lienzo.height = Math.round(innerHeight * ESC);
+  R = Math.min(W, H) * 0.17;
+  fondoCol = null; anilloCol = null;
+}
+addEventListener("resize", medir); medir();
+
+const motas = Array.from({ length: 40 }, () => ({ x: Math.random(), y: Math.random(), z: 0.2 + Math.random() * 0.8, f: Math.random() * TAU }));
+const satelites = Array.from({ length: 6 }, (_, i) => ({
+  r: 1.2 + (i % 3) * 0.15, inc: 0.25 + 0.5 * Math.random(), fase: Math.random() * TAU,
+  v: (0.15 + Math.random() * 0.25) * (i % 2 ? 1 : -1), tam: 1.4 + Math.random() * 1.8,
+}));
+const semillas = Array.from({ length: 72 }, () => Math.random() * 1000);
+let haloSprite = null, haloCol = null;
+function pintarHalo(c) {
+  haloSprite = document.createElement("canvas"); haloSprite.width = haloSprite.height = 128;
+  const h = haloSprite.getContext("2d"), g = h.createRadialGradient(64, 64, 6, 64, 64, 64);
+  g.addColorStop(0, rgba(c, 0.45)); g.addColorStop(1, rgba(c, 0));
+  h.fillStyle = g; h.fillRect(0, 0, 128, 128);
+  haloCol = c.map(v => Math.round(v));
+}
+const cambiado = (a, b) => !a || a.some((v, k) => Math.abs(v - b[k]) > 6);
+
+function ampVoz(ahora) {
+  if (!voz.env.length) return 0;
+  const i = Math.floor((ahora - voz.t0) / 1000 / voz.paso);
+  return (i < 0 || i >= voz.env.length) ? 0 : voz.env[i];
+}
+
+let rot = 0, ultimo = performance.now(), ultimaActividad = performance.now();
+function cuadro(ahora) {
+  // en reposo, pocas imágenes por segundo (y aún menos si lleva un rato sin pasar nada): el portátil no tiene
+  // gráfica acelerada y cada fotograma se dibuja con el procesador
+  const quieto = estado === "reposo" || estado === "arrancando" || estado === "error";
+  const fps = !quieto ? 20 : (ahora - ultimaActividad > 60000 ? 3 : 6);
+  if (ahora - ultimo < 1000 / fps - 3) { requestAnimationFrame(cuadro); return; }
+  const dtS = Math.min(0.1, (ahora - ultimo) / 1000); ultimo = ahora;
+  const obj = ESTADOS[estado];
+  for (let k = 0; k < 3; k++) col[k] += (obj.col[k] - col[k]) * 0.06;
+  vel += (obj.vel - vel) * 0.05;
+  brillo += (obj.brillo - brillo) * 0.05;
+  const objetivoAmp = estado === "hablando" ? ampVoz(ahora) : nivelMic * (estado === "escuchando" ? 1 : 0.45);
+  amp += (objetivoAmp - amp) * (objetivoAmp > amp ? 0.5 : 0.12);
+  nivelMic *= 0.97;
+  rot += dtS * vel;
+  const cx = W / 2, cy = H * 0.46, t = ahora / 1000;
+
+  if (cambiado(fondoCol, col) || fondo.width !== W) pintarFondo(col);
+  if (cambiado(anilloCol, col)) pintarAnillo(col);
+  ctx.drawImage(fondo, 0, 0);
+
+  // suelo en perspectiva
+  ctx.lineWidth = 1;
+  const horizonte = H * 0.74;
+  for (let i = 0; i < 12; i++) {
+    const p = ((i + (t * 0.25) % 1) / 12);
+    ctx.strokeStyle = rgba(col, 0.05 + 0.12 * p);
+    const y = horizonte + (H - horizonte) * p * p;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  for (const m of motas) {
+    m.y -= dtS * 0.012 * m.z * (0.6 + vel * 0.4);
+    if (m.y < 0) { m.y = 1; m.x = Math.random(); }
+    ctx.fillStyle = rgba(col, (0.15 + 0.35 * m.z) * (0.6 + 0.4 * Math.sin(t * 2 + m.f)));
+    ctx.fillRect(m.x * W, m.y * H, 1.2 + m.z * 1.5, 1.2 + m.z * 1.5);
+  }
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.globalCompositeOperation = "lighter";
+
+  // halo (sprite cacheado; solo cambia su tamaño y opacidad)
+  if (!haloSprite || cambiado(haloCol, col)) pintarHalo(col);
+  const rh = R * (1.95 + amp * 0.5);
+  ctx.globalAlpha = Math.min(1, 0.55 * brillo + amp * 0.5);
+  ctx.drawImage(haloSprite, -rh, -rh, rh * 2, rh * 2);
+  ctx.globalAlpha = 1;
+
+  // barrido de radar
+  ctx.save(); ctx.rotate(t * 0.9 * (0.5 + vel * 0.3));
+  ctx.fillStyle = rgba(col, 0.05 + 0.05 * brillo);
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R * 1.6, 0, 0.5); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = rgba(col, 0.45 * brillo); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(R * 1.6, 0); ctx.stroke();
+  ctx.restore();
+
+  // anillo exterior con texto y marcas (cacheado, solo gira)
+  ctx.save(); ctx.rotate(rot * 0.1); ctx.globalAlpha = 0.5 + 0.5 * brillo;
+  ctx.drawImage(anillo, -anillo.width / 2, -anillo.height / 2);
+  ctx.restore();
+
+  // arcos segmentados
+  const arcos = (radio, n, hueco, grosor, giro, alfa) => {
+    ctx.lineWidth = grosor; ctx.strokeStyle = rgba(col, alfa);
+    for (let i = 0; i < n; i++) {
+      const a0 = giro + i / n * TAU;
+      ctx.beginPath(); ctx.arc(0, 0, radio, a0, a0 + TAU / n - hueco); ctx.stroke();
+    }
+  };
+  arcos(R * 1.45, 6, 0.24, 3, -rot * 0.35, 0.55 * brillo);
+  arcos(R * 1.35, 24, 0.1, 1.2, rot * 0.5, 0.38 * brillo);
+  arcos(R * (1.03 + amp * 0.08), 3, 0.95, 6, rot * 0.9, 0.7 * brillo);
+  // arco de progreso ámbar al pensar
+  if (estado === "pensando" || estado === "analizando" || estado === "arrancando") {
+    ctx.lineWidth = 4; ctx.strokeStyle = rgba(col, 0.95);
+    const a = t * 4.2;
+    ctx.beginPath(); ctx.arc(0, 0, R * 1.54, a, a + 0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, R * 1.54, a + Math.PI, a + Math.PI + 0.9); ctx.stroke();
+  }
+
+  // espectro radial
+  const N = semillas.length;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = rgba(col, 0.25 + 0.65 * Math.min(1, amp * 1.4 + 0.15));
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const a = i / N * TAU - Math.PI / 2;
+    const ruido = 0.5 + 0.5 * Math.sin(t * 6 + semillas[i]) * Math.sin(t * 2.3 + semillas[i] * 0.7);
+    const largo = R * (0.03 + amp * 0.45 * ruido + 0.02 * ruido * brillo), r0 = R * 1.12;
+    ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+    ctx.lineTo(Math.cos(a) * (r0 + largo), Math.sin(a) * (r0 + largo));
+  }
+  ctx.stroke();
+
+  // anillos punteados
+  ctx.save(); ctx.rotate(-rot * 0.7);
+  ctx.setLineDash([2, 7]); ctx.lineWidth = 1.5; ctx.strokeStyle = rgba(col, 0.55 * brillo);
+  ctx.beginPath(); ctx.arc(0, 0, R * 0.88, 0, TAU); ctx.stroke();
+  ctx.setLineDash([14, 10]); ctx.lineWidth = 1; ctx.strokeStyle = rgba(col, 0.35 * brillo);
+  ctx.beginPath(); ctx.arc(0, 0, R * 0.74, 0, TAU); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // reactor: 10 celdas trapezoidales alrededor de un triángulo
+  ctx.save(); ctx.rotate(rot * 0.2);
+  const c1 = R * 0.46, c2 = R * (0.64 + amp * 0.05);
+  for (let i = 0; i < 10; i++) {
+    const a0 = i / 10 * TAU + 0.05, a1 = (i + 1) / 10 * TAU - 0.05;
+    ctx.fillStyle = rgba(col, (0.10 + 0.25 * brillo) * (0.7 + 0.3 * Math.sin(t * 3 + i)) + amp * 0.2);
+    ctx.beginPath(); ctx.arc(0, 0, c2, a0, a1); ctx.arc(0, 0, c1, a1, a0, true); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  ctx.save(); ctx.rotate(-rot * 0.15);
+  ctx.lineWidth = 2; ctx.strokeStyle = rgba(col, 0.8 * brillo);
+  ctx.beginPath();
+  for (let i = 0; i <= 3; i++) {
+    const a = i / 3 * TAU - Math.PI / 2, r = R * (0.40 + amp * 0.05);
+    i ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // núcleo
+  const rn = R * (0.26 + amp * 0.14 + 0.012 * Math.sin(t * 2));
+  const nucleo = ctx.createRadialGradient(0, 0, 0, 0, 0, rn * 1.7);
+  nucleo.addColorStop(0, "rgba(245,255,255," + (0.85 * brillo + amp * 0.15) + ")");
+  nucleo.addColorStop(0.35, rgba(col, 0.7 * brillo + amp * 0.3));
+  nucleo.addColorStop(1, rgba(col, 0));
+  ctx.fillStyle = nucleo; ctx.beginPath(); ctx.arc(0, 0, rn * 1.7, 0, TAU); ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = rgba(col, 0.9);
+  ctx.beginPath(); ctx.arc(0, 0, rn, 0, TAU); ctx.stroke();
+
+  // satélites
+  ctx.fillStyle = rgba(col, 0.9);
+  for (const s of satelites) {
+    s.fase += dtS * s.v * vel;
+    ctx.beginPath(); ctx.arc(Math.cos(s.fase) * R * s.r, Math.sin(s.fase) * R * s.r * s.inc, s.tam + amp * 2, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+
+  // onda de voz bajo el núcleo
+  ctx.strokeStyle = rgba(col, 0.35 + amp * 0.5); ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  const y0 = cy + R * 2.0, ancho = R * 2.6;
+  for (let i = 0; i <= 60; i++) {
+    const x = cx - ancho / 2 + ancho * i / 60, env = Math.sin(Math.PI * i / 60);
+    const y = y0 + Math.sin(i * 0.55 + t * 9) * Math.sin(i * 0.13 - t * 3) * R * 0.18 * (amp + 0.04) * env;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+
+  // barrido vertical sutil
+  const sy = (t * 0.08 % 1) * H;
+  const barrido = ctx.createLinearGradient(0, sy - 40, 0, sy + 2);
+  barrido.addColorStop(0, rgba(col, 0)); barrido.addColorStop(1, rgba(col, 0.05));
+  ctx.fillStyle = barrido; ctx.fillRect(0, sy - 40, W, 42);
+
+  requestAnimationFrame(cuadro);
+}
+requestAnimationFrame(cuadro);
+</script>
+</body>
+</html>

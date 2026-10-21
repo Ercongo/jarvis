@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendario personal</title>
+<style>
+  :root {
+    --fondo: #02060d;
+    --panel: #06111c;
+    --linea: rgba(56, 232, 255, .14);
+    --tinta: #dff9ff;
+    --tenue: #5d8d99;
+    --acento: #38e8ff;
+    --aviso: #ffc861;
+    --peligro: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--fondo); color: var(--tinta);
+               font-family: "DejaVu Sans", "Ubuntu", sans-serif; }
+  body { display: grid; grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr; height: 100vh; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 14px 22px;
+           border-bottom: 1px solid var(--linea); }
+  .marca { font-family: "DejaVu Sans Mono", monospace; letter-spacing: .35em; font-size: 13px; color: var(--acento); }
+  h1 { margin: 0; font-weight: 400; font-size: 24px; letter-spacing: .04em; text-transform: capitalize; flex: 1; }
+  button { font: inherit; color: var(--tinta); background: transparent; border: 1px solid var(--linea);
+           border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover, button:focus-visible { border-color: var(--acento); color: #fff; outline: none; }
+  .mes { display: grid; grid-template-rows: auto 1fr; padding: 10px 14px 14px 22px; min-height: 0; }
+  .semana { display: grid; grid-template-columns: repeat(7, 1fr); font-family: "DejaVu Sans Mono", monospace;
+            font-size: 11px; letter-spacing: .2em; color: var(--tenue); text-transform: uppercase; padding: 4px 6px 8px; }
+  .rejilla { display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 1fr; gap: 4px; min-height: 0; }
+  .dia { background: var(--panel); border: 1px solid transparent; border-radius: 6px; padding: 6px 7px;
+         overflow: hidden; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-height: 0; text-align: left; }
+  .dia:hover { border-color: var(--linea); }
+  .dia.fuera { opacity: .35; }
+  .dia.hoy { border-color: rgba(56, 232, 255, .55); box-shadow: inset 0 0 18px rgba(56, 232, 255, .12); }
+  .dia.sel { border-color: var(--acento); }
+  .num { font-size: 13px; color: var(--tenue); font-variant-numeric: tabular-nums; }
+  .hoy .num { color: var(--acento); font-weight: 700; }
+  .chip { font-size: 12px; line-height: 1.35; padding: 1px 6px; border-left: 2px solid var(--acento);
+          background: rgba(56, 232, 255, .07); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip.rec { border-left-color: var(--aviso); background: rgba(255, 200, 97, .07); }
+  .chip.pasado { opacity: .45; }
+  .chip b { font-weight: 400; color: var(--acento); margin-right: 5px; font-variant-numeric: tabular-nums; }
+  .chip.rec b { color: var(--aviso); }
+  .mas { font-size: 11px; color: var(--tenue); padding-left: 6px; }
+  aside { border-left: 1px solid var(--linea); padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+  aside h2 { margin: 0 0 10px; font-size: 11px; font-weight: 400; letter-spacing: .25em; text-transform: uppercase;
+             color: var(--acento); font-family: "DejaVu Sans Mono", monospace; }
+  .titulo-dia { font-size: 19px; margin: 0 0 10px; }
+  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  li { display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: center; font-size: 14px;
+       padding: 7px 8px; background: var(--panel); border-radius: 6px; border-left: 2px solid var(--acento); }
+  li.rec { border-left-color: var(--aviso); }
+  li.pasado { opacity: .5; }
+  li .h { color: var(--acento); font-variant-numeric: tabular-nums; font-size: 13px; }
+  li.rec .h { color: var(--aviso); }
+  li .t { overflow-wrap: anywhere; }
+  li .t small { display: block; color: var(--tenue); font-size: 11px; margin-top: 2px; }
+  li button { border: none; color: var(--tenue); padding: 2px 6px; font-size: 16px; }
+  li button:hover { color: var(--peligro); }
+  .vacio { color: var(--tenue); font-size: 13px; }
+  form { display: grid; grid-template-columns: 96px 1fr; gap: 8px; margin-top: 12px; }
+  input { font: inherit; font-size: 14px; color: var(--tinta); background: var(--panel); border: 1px solid var(--linea);
+          border-radius: 6px; padding: 7px 8px; min-width: 0; color-scheme: dark; }
+  input:focus { outline: none; border-color: var(--acento); }
+  form button { grid-column: 1 / -1; background: rgba(56, 232, 255, .1); border-color: rgba(56, 232, 255, .4); }
+  .nota { font-size: 11px; color: var(--tenue); grid-column: 1 / -1; }
+  #error { color: var(--peligro); font-size: 12px; min-height: 1em; grid-column: 1 / -1; }
+  .leyenda { display: flex; gap: 14px; font-size: 11px; color: var(--tenue); }
+  .leyenda span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; background: var(--acento); }
+  .leyenda span.r::before { background: var(--aviso); }
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto auto auto; height: auto; }
+    .rejilla { grid-auto-rows: 80px; }
+    aside { border-left: none; border-top: 1px solid var(--linea); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="marca">JARVIS</span>
+  <h1 id="titulo-mes">Calendario</h1>
+  <div class="leyenda"><span>Evento</span><span class="r">Recordatorio</span></div>
+  <button id="ant" aria-label="Mes anterior">‹</button>
+  <button id="hoy">Hoy</button>
+  <button id="sig" aria-label="Mes siguiente">›</button>
+</header>
+<main class="mes">
+  <div class="semana"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div>
+  <div class="rejilla" id="rejilla"></div>
+</main>
+<aside>
+  <section>
+    <h2>Día</h2>
+    <p class="titulo-dia" id="titulo-dia"></p>
+    <ul id="lista-dia"></ul>
+    <form id="form">
+      <input type="time" id="f-hora" aria-label="Hora (opcional)">
+      <input type="text" id="f-texto" placeholder="Qué hay que apuntar…" maxlength="200" aria-label="Texto">
+      <button type="submit">Añadir a este día</button>
+      <div class="nota">Si le pones hora, Jarvis te avisará en ese momento. Sin hora, es de día completo.</div>
+      <div id="error"></div>
+    </form>
+  </section>
+  <section>
+    <h2>Próximos</h2>
+    <ul id="lista-prox"></ul>
+  </section>
+</aside>
+<script>
+const $ = id => document.getElementById(id);
+const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const DIAS = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+let datos = { hoy: "", ahora: "00:00", eventos: [] };
+let vista = null, seleccion = null;
+
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const deIso = s => { const [a, m, d] = s.split("-").map(Number); return new Date(a, m - 1, d); };
+const pasado = e => e.fecha < datos.hoy || (e.fecha === datos.hoy && e.hora && e.hora < datos.ahora);
+const delDia = f => datos.eventos.filter(e => e.fecha === f)
+  .sort((a, b) => (a.hora || "") < (b.hora || "") ? -1 : 1);
+const fechaLarga = f => { const d = deIso(f); return `${DIAS[d.getDay()]} ${d.getDate()} de ${MESES[d.getMonth()]}`; };
+
+async function cargar() {
+  try {
+    const r = await fetch("/calendario.json", { cache: "no-store" });
+    datos = await r.json();
+  } catch (e) { return; }
+  if (!vista) { const h = deIso(datos.hoy); vista = new Date(h.getFullYear(), h.getMonth(), 1); }
+  if (!seleccion) seleccion = datos.hoy;
+  pintar();
+}
+
+function chip(e) {
+  const c = document.createElement("div");
+  c.className = "chip" + (e.origen === "recordatorio" ? " rec" : "") + (pasado(e) ? " pasado" : "");
+  if (e.hora) { const b = document.createElement("b"); b.textContent = e.hora; c.appendChild(b); }
+  c.appendChild(document.createTextNode(e.texto));
+  c.title = (e.hora ? e.hora + " · " : "") + e.texto;
+  return c;
+}
+
+function pintar() {
+  $("titulo-mes").textContent = `${MESES[vista.getMonth()]} ${vista.getFullYear()}`;
+  const rej = $("rejilla"); rej.textContent = "";
+  const inicio = new Date(vista); inicio.setDate(1 - ((vista.getDay() + 6) % 7));
+  const semanas = Math.ceil((((vista.getDay() + 6) % 7) + new Date(vista.getFullYear(), vista.getMonth() + 1, 0).getDate()) / 7);
+  rej.style.gridTemplateRows = `repeat(${semanas}, 1fr)`;
+  for (let i = 0; i < semanas * 7; i++) {
+    const d = new Date(inicio); d.setDate(inicio.getDate() + i);
+    const f = iso(d);
+    const celda = document.createElement("button");
+    celda.type = "button";
+    celda.className = "dia" + (d.getMonth() !== vista.getMonth() ? " fuera" : "") + (f === datos.hoy ? " hoy" : "")
+      + (f === seleccion ? " sel" : "");
+    celda.setAttribute("aria-label", fechaLarga(f));
+    const n = document.createElement("span"); n.className = "num"; n.textContent = d.getDate(); celda.appendChild(n);
+    const evs = delDia(f);
+    evs.slice(0, 3).forEach(e => celda.appendChild(chip(e)));
+    if (evs.length > 3) { const m = document.createElement("span"); m.className = "mas"; m.textContent = `+${evs.length - 3} más`; celda.appendChild(m); }
+    celda.onclick = () => { seleccion = f; pintar(); $("f-texto").focus(); };
+    rej.appendChild(celda);
+  }
+  pintarDia();
+  pintarProximos();
+}
+
+function fila(e, conFecha) {
+  const li = document.createElement("li");
+  li.className = (e.origen === "recordatorio" ? "rec" : "") + (pasado(e) ? " pasado" : "");
+  const h = document.createElement("span"); h.className = "h"; h.textContent = e.hora || "día";
+  const t = document.createElement("span"); t.className = "t"; t.textContent = e.texto;
+  const sub = [];
+  if (conFecha) sub.push(fechaLarga(e.fecha));
+  if (e.origen === "recordatorio") sub.push(pasado(e) ? "recordatorio avisado" : "recordatorio");
+  if (sub.length) { const s = document.createElement("small"); s.textContent = sub.join(" · "); t.appendChild(s); }
+  const x = document.createElement("button"); x.type = "button"; x.textContent = "×"; x.title = "Borrar";
+  x.setAttribute("aria-label", "Borrar " + e.texto);
+  x.onclick = async () => {
+    if (!confirm(`¿Borrar «${e.texto}» del calendario?`)) return;
+    await enviar("/calendario/borrar", { id: e.id });
+    cargar();
+  };
+  li.append(h, t, x);
+  return li;
+}
+
+function pintarDia() {
+  const tl = fechaLarga(seleccion); $("titulo-dia").textContent = tl[0].toUpperCase() + tl.slice(1);
+  const ul = $("lista-dia"); ul.textContent = "";
+  const evs = delDia(seleccion);
+  if (!evs.length) { const p = document.createElement("li"); p.className = "vacio"; p.style.display = "block";
+    p.style.background = "none"; p.style.borderLeft = "none"; p.textContent = "Nada apuntado."; ul.appendChild(p); }
+  evs.forEach(e => ul.appendChild(fila(e, false)));
+}
+
+function pintarProximos() {
+  const ul = $("lista-prox"); ul.textContent = "";
+  const prox = datos.eventos.filter(e => !pasado(e))
+    .sort((a, b) => (a.fecha + (a.hora || "")) < (b.fecha + (b.hora || "")) ? -1 : 1).slice(0, 8);
+  if (!prox.length) { const p = document.createElement("li"); p.className = "vacio"; p.style.display = "block";
+    p.style.background = "none"; p.style.borderLeft = "none"; p.textContent = "No hay nada próximo."; ul.appendChild(p); }
+  prox.forEach(e => ul.appendChild(fila(e, true)));
+}
+
+async function enviar(ruta, cuerpo) {
+  const r = await fetch(ruta, { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" },
+                               body: JSON.stringify(cuerpo) });
+  return r.json();
+}
+
+$("form").onsubmit = async ev => {
+  ev.preventDefault();
+  const texto = $("f-texto").value.trim();
+  if (!texto) { $("error").textContent = "Escribe qué quieres apuntar."; return; }
+  const r = await enviar("/calendario/nuevo", { fecha: seleccion, hora: $("f-hora").value, texto });
+  if (!r.ok) { $("error").textContent = r.error || "No se pudo guardar."; return; }
+  $("error").textContent = ""; $("f-texto").value = ""; $("f-hora").value = "";
+  cargar();
+};
+$("ant").onclick = () => { vista.setMonth(vista.getMonth() - 1); pintar(); };
+$("sig").onclick = () => { vista.setMonth(vista.getMonth() + 1); pintar(); };
+$("hoy").onclick = () => { const h = deIso(datos.hoy); vista = new Date(h.getFullYear(), h.getMonth(), 1); seleccion = datos.hoy; pintar(); };
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowLeft") $("ant").click();
+  if (e.key === "ArrowRight") $("sig").click();
+});
+cargar();
+setInterval(cargar, 30000);
+</script>
+</body>
+</html>

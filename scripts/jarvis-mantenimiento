@@ -1,0 +1,34 @@
+#!/bin/bash
+# Tareas de mantenimiento que necesitan administrador. Jarvis lo ejecuta con "sudo -n" (sin contraseña)
+# gracias a /etc/sudoers.d/jarvis-mantenimiento, que SOLO permite este script y solo estas órdenes.
+set -u
+export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
+case "${1:-}" in
+  ping)
+    echo ok ;;
+  limpiar)
+    apt-get clean
+    apt-get -y autoremove --purge
+    journalctl --vacuum-size=100M
+    if command -v snap >/dev/null; then
+      LANG=C snap list --all 2>/dev/null | awk '/disabled/{print $1, $3}' | while read -r nombre rev; do
+        snap remove "$nombre" --revision="$rev"
+      done
+    fi
+    ;;
+  refrescar)
+    apt-get update -qq ;;
+  actualizar)
+    apt-get update -qq || exit 1
+    apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade || exit 1
+    if command -v snap >/dev/null; then snap refresh; fi
+    apt-get -y autoremove --purge
+    ;;
+  reiniciar)
+    systemctl reboot ;;
+  apagar)
+    systemctl poweroff ;;
+  *)
+    echo "uso: $0 ping|limpiar|refrescar|actualizar|reiniciar|apagar" >&2
+    exit 2 ;;
+esac
