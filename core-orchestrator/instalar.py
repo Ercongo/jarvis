@@ -26,13 +26,14 @@ import zipfile
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS
 from herramientas import carpeta_usuario, lanzar, normalizar
 from sistema import Respuesta
 
 HOME = Path.home()
 APPS = HOME / "Aplicaciones"
 MENU = HOME / ".local" / "share" / "applications"
-REGISTRO = HOME / "jarvis" / "instalados.json"
+REGISTRO = DATOS / "instalados.json"
 EXT_INSTALABLES = (".appimage", ".deb", ".flatpakref", ".tar.gz", ".tgz", ".tar.xz", ".zip", ".run", ".snap")
 
 

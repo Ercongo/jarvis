@@ -23,11 +23,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS
 from herramientas import (CODIGOS_TIEMPO, carpeta_usuario, guardar_config, http_json, leer_config, normalizar)
 from sistema import Respuesta, a_numero, con_tildes, hora_hablada, interpretar_recordatorio, leer_recordatorios
 
 HOME = Path.home()
-MEMORIA = HOME / "jarvis" / "memoria.json"
+MEMORIA = DATOS / "memoria.json"
 
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 

@@ -24,9 +24,10 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from perfil import CONFIG as PERFIL_CONFIG, DATOS
 
 HOME = Path.home()
-CONFIG = HOME / "jarvis" / "config.json"
+CONFIG = PERFIL_CONFIG
 
 
 # =============================================================== utilidades
@@ -51,7 +52,7 @@ def guardar_config(**cambios) -> None:
     CONFIG.write_text(json.dumps(c, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-LOG_ABRIR = HOME / "jarvis" / "logs" / "abrir.log"
+LOG_ABRIR = DATOS / "logs" / "abrir.log"
 
 
 def _anotar(texto: str) -> None:

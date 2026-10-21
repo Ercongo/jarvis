@@ -45,6 +45,7 @@ from pathlib import Path
 
 import numpy as np
 
+from perfil import DATOS, INSTALACION
 from sistema import Sistema, VOLUMEN_SUSURRO
 from extras import Extras, memoria_para_ia, leer_memoria, guardar_memoria
 from telegram_bot import Telegram
@@ -70,7 +71,7 @@ from creativo import Creativo
 from aprendizaje import Aprendizaje, limpiar as limpiar_orden
 from herramientas import Herramientas, guardar_config, leer_config, normalizar
 
-BASE = Path.home() / "jarvis"
+BASE = DATOS
 LOGS = BASE / "logs"
 NOTAS = BASE / "notas" / "notas.md"
 TMP = Path(tempfile.gettempdir()) / "jarvis"
@@ -504,7 +505,7 @@ def reproductor() -> list[str]:
 def buscar_voz() -> Path:
     if os.environ.get("JARVIS_VOZ"):
         return Path(os.environ["JARVIS_VOZ"]).expanduser()
-    voces = sorted(p for p in BASE.rglob("*.onnx") if "venv" not in p.parts and Path(str(p) + ".json").exists())
+    voces = sorted(p for p in INSTALACION.rglob("*.onnx") if "venv" not in p.parts and Path(str(p) + ".json").exists())
     preferida = [v for v in voces if "sharvard" in v.name]      # voz de mayordomo elegida por el señor
     if preferida:
         return preferida[0]

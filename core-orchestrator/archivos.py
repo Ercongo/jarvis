@@ -33,6 +33,7 @@ import zipfile
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS, INSTALACION, MOTOR
 from herramientas import (CARPETAS_CONOCIDAS, HOME, carpeta_usuario, corto, lanzar, nombre_carpeta_conocida,
                           normalizar)
 from sistema import Respuesta, con_tildes
@@ -63,8 +64,9 @@ def protegida(p: Path) -> str | None:
     relativa = p.relative_to(HOME)
     if any(parte.startswith(".") for parte in relativa.parts):
         return "es una carpeta oculta del sistema"
-    if relativa.parts[0] in ("snap", "jarvis"):
-        return "es una carpeta de programas o del propio Jarvis"
+    if relativa.parts[0] == "snap" or any(p == r or r in p.parents for r in (DATOS.resolve(), INSTALACION.resolve(),
+                                                                            MOTOR)):
+        return "es una carpeta de programas o del propio asistente"
     principales = {carpeta_usuario(c) for c in set(CARPETAS_CONOCIDAS.values())}
     if p in principales:
         return "es una de tus carpetas principales"

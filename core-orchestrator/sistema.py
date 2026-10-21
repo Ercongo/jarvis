@@ -20,10 +20,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS, INSTALACION
 from herramientas import guardar_config, leer_config, normalizar
 
 HOME = Path.home()
-RECORDATORIOS = HOME / "jarvis" / "recordatorios.json"
+RECORDATORIOS = DATOS / "recordatorios.json"
 VOLUMEN_SUSURRO = 0.3          # la voz al 30 % cuando susurra
 
 
@@ -110,7 +111,7 @@ def silenciar(si: bool) -> bool:
 # =============================================================== música de arranque
 
 PID_MUSICA = HOME / ".cache" / "jarvis_musica.pid"
-SCRIPT_MUSICA = HOME / "jarvis" / "musica_arranque.sh"
+SCRIPT_MUSICA = INSTALACION / "musica_arranque.sh"
 
 
 def musica_sonando() -> int | None:
@@ -136,7 +137,7 @@ def parar_musica() -> bool:
 
 
 def hay_musica_arranque() -> bool:
-    return any((HOME / "jarvis" / "musica").glob("arranque.*"))
+    return any((INSTALACION / "musica").glob("arranque.*"))
 
 
 # =============================================================== apagar / reiniciar

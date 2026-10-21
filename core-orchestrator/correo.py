@@ -28,12 +28,13 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS
 from google_cuenta import CuentaGoogle, ErrorGoogle
 from herramientas import guardar_config, leer_config, normalizar
 from sistema import Respuesta
 
 GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me"
-AVISADOS = Path.home() / "jarvis" / "correo_avisados.json"
+AVISADOS = DATOS / "correo_avisados.json"
 NO_LEIDOS = "is:unread in:inbox category:primary"
 IMPORTANTES = "is:unread is:important in:inbox category:primary newer_than:2d"
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",

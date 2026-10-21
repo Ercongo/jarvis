@@ -23,12 +23,13 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS
 from herramientas import abrir_web, normalizar
 from sistema import RE_A_LAS, Respuesta, a_numero, con_tildes, leer_recordatorios
 
-CALENDARIO = Path.home() / "jarvis" / "calendario.json"
-ICS = Path.home() / "jarvis" / "calendario.ics"
-BORRADOS = Path.home() / "jarvis" / "calendario_borrados.json"   # ids de Google pendientes de borrar allí
+CALENDARIO = DATOS / "calendario.json"
+ICS = DATOS / "calendario.ics"
+BORRADOS = DATOS / "calendario_borrados.json"   # ids de Google pendientes de borrar allí
 AL_CAMBIAR: list[Callable[[], None]] = []                     # la sincronización con Google se apunta aquí
 URL = "http://127.0.0.1:8765/calendario"
 

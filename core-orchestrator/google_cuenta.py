@@ -24,10 +24,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from perfil import DATOS, SECRETOS
 
-BASE = Path.home() / "jarvis"
-CONFIG = BASE / "google.json"
-CLIENTE = BASE / "google_cliente.json"
+BASE = DATOS
+CONFIG = SECRETOS / "google.json"
+CLIENTE = SECRETOS / "google_cliente.json"
 REDIRECCION = "http://127.0.0.1:8765/google"
 URL_CONECTAR = "http://127.0.0.1:8765/google/conectar"
 PERMISOS = ["https://www.googleapis.com/auth/calendar.events",

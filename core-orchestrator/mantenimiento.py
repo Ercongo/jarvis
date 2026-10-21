@@ -34,12 +34,13 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS
 from herramientas import guardar_config, leer_config, normalizar
 from sistema import Respuesta
 
 HOME = Path.home()
 CACHE = HOME / ".cache"
-LOGS = HOME / "jarvis" / "logs"
+LOGS = DATOS / "logs"
 SCRIPT_ROOT = "/usr/local/sbin/jarvis-mantenimiento"
 
 # Cachés que se pueden borrar sin perder nada (se regeneran solas). NUNCA huggingface: ahí está whisper.

@@ -31,12 +31,13 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS, SECRETOS
 from herramientas import buscar_archivos, buscar_web, leer_config, guardar_config, leer_texto, normalizar
 from sistema import Respuesta, con_tildes
 
 HOME = Path.home()
-CONFIG = HOME / "jarvis" / "openrouter.json"
-GASTO = HOME / "jarvis" / "logs" / "openrouter_gasto.json"
+CONFIG = SECRETOS / "openrouter.json"
+GASTO = DATOS / "logs" / "openrouter_gasto.json"
 API = "https://openrouter.ai/api/v1"
 MODELO = "nex-agi/nex-n2-pro"
 # Por orden: el que pidió el usuario y, si OpenRouter no lo sirve (el 20 oct no tenía proveedores),

@@ -22,8 +22,9 @@ import urllib.request
 import uuid
 from pathlib import Path
 from typing import Callable
+from perfil import SECRETOS
 
-CONFIG = Path.home() / "jarvis" / "telegram.json"
+CONFIG = SECRETOS / "telegram.json"
 TMP = Path("/tmp/jarvis")
 
 

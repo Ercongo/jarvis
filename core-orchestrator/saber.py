@@ -33,12 +33,13 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS
 from extras import MEMORIA as MEMORIA_JSON, leer_memoria, guardar_memoria
 from herramientas import buscar_web, carpeta_usuario, guardar_config, leer_config, leer_texto, normalizar
 from sistema import Respuesta, con_tildes
 
 HOME = Path.home()
-SABER = HOME / "jarvis" / "saber"
+SABER = DATOS / "saber"
 NOTAS = SABER / "notas"
 INDICE = SABER / "documentos.json"
 EXT_DOCS = {".txt", ".md", ".pdf", ".docx", ".odt", ".doc", ".rtf", ".xlsx", ".ods", ".csv", ".pptx", ".odp"}

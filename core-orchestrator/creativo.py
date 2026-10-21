@@ -40,6 +40,7 @@ from typing import Callable
 
 import numpy as np
 
+from perfil import INSTALACION
 from archivos import crear_docx, a_pdf, limpiar_nombre, sin_pisar
 from herramientas import HOME, abrir_archivo, carpeta_usuario, normalizar
 from sistema import Respuesta, con_tildes
@@ -47,7 +48,7 @@ from estudio import SinHerramienta, WEBS, duracion, herramienta_pedida
 from ultimos import apuntar
 
 TMP = Path(tempfile.gettempdir()) / "jarvis"
-VENV_MUSICA = HOME / "jarvis" / "venv_musica" / "bin" / "python"
+VENV_MUSICA = INSTALACION / "venv_musica" / "bin" / "python"
 MUSICA_IA = Path(__file__).with_name("musica_ia.py")
 URL_IMAGEN = "https://image.pollinations.ai/prompt/{}?width={}&height={}&nologo=true&seed={}&model=flux"
 

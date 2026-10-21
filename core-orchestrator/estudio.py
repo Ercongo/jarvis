@@ -41,11 +41,12 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS, SECRETOS
 from herramientas import guardar_config, leer_config, normalizar
 
 HOME = Path.home()
-CLAVES = HOME / "jarvis" / "estudio.json"
-GASTO = HOME / "jarvis" / "logs" / "estudio_gasto.json"
+CLAVES = SECRETOS / "estudio.json"
+GASTO = DATOS / "logs" / "estudio_gasto.json"
 TMP = Path(tempfile.gettempdir()) / "jarvis" / "estudio"
 UA = "Mozilla/5.0 (X11; Linux x86_64) Jarvis/1.0"
 

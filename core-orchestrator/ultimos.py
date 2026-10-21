@@ -17,11 +17,12 @@ import time
 from pathlib import Path
 from typing import Callable
 
+from perfil import DATOS
 from herramientas import abrir_archivo, normalizar
 from sistema import Respuesta
 
 HOME = Path.home()
-CREADOS = HOME / "jarvis" / "creados.json"
+CREADOS = DATOS / "creados.json"
 _lock = threading.Lock()
 _oyentes: list[Callable[[Path, str, bool], None]] = []
 

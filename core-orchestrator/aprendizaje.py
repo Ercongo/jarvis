@@ -22,10 +22,11 @@ import json
 import re
 from pathlib import Path
 
+from perfil import DATOS
 from herramientas import normalizar
 from sistema import Respuesta, con_tildes
 
-APRENDIDO = Path.home() / "jarvis" / "aprendido.json"
+APRENDIDO = DATOS / "aprendido.json"
 
 VERBOS = (r"abre|abreme|pon|ponme|baja|bajale|sube|subele|haz|hazme|busca|cierra|apaga|activa|desactiva|enciende|"
           r"dime|di|reproduce|para|limpia|lee|escribe|muestra|muestrame|ensena|ensename|recuerdame|silencia|"
