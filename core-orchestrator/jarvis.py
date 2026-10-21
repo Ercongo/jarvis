@@ -1562,6 +1562,13 @@ def main() -> None:
     ap.add_argument("--mudo", action="store_true", help="sin voz")
     ap.add_argument("--calibrar", action="store_true", help="ver el nivel del micrófono")
     args = ap.parse_args()
+    try:                                                  # las claves, solo legibles por la persona
+        from secretos import asegurar_permisos
+        corregidas = asegurar_permisos()
+        if corregidas:
+            log("claves protegidas (600): " + ", ".join(corregidas))
+    except Exception as e:
+        log(f"no he podido revisar los permisos de las claves: {e}")
     if args.calibrar:
         return calibrar()
     j = Jarvis(modo_texto=args.texto, mudo=args.mudo)
