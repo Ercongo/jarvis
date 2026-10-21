@@ -50,7 +50,8 @@ def frase(clave: str, **datos) -> str:
     candidatas = [o for o in opciones if o != _ultima.get(clave)] or opciones
     elegida = random.choice(candidatas)
     _ultima[clave] = elegida
-    return elegida.format(**datos) if datos else elegida
+    from perfil import con_nombre
+    return con_nombre(elegida.format(**datos) if datos else elegida)
 
 
 def variar(texto: str) -> str:

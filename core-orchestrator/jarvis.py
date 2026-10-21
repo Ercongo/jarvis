@@ -45,7 +45,8 @@ from pathlib import Path
 
 import numpy as np
 
-from perfil import DATOS, INSTALACION
+import perfil
+from perfil import DATOS, INSTALACION, con_nombre
 from sistema import Sistema, VOLUMEN_SUSURRO
 from extras import Extras, memoria_para_ia, leer_memoria, guardar_memoria
 from telegram_bot import Telegram
@@ -471,7 +472,7 @@ class Oido:
         t0 = time.time()
         segmentos, _ = self.modelo.transcribe(
             audio, language="es", beam_size=BEAM_WHISPER, vad_filter=True,
-            initial_prompt="Conversación en español de España con Jarvis, un asistente personal. Hola, Jarvis.",
+            initial_prompt=con_nombre("Conversación en español de España con Jarvis, un asistente personal. Hola, Jarvis."),
         )
         texto = " ".join(s.text.strip() for s in segmentos).strip()
         if not silencioso:
@@ -479,16 +480,25 @@ class Oido:
         return texto
 
 
-VARIANTES_NOMBRE = ["jarvis", "yarvis", "jarbis", "yarbis", "harvis", "charvis", "jervis", "yervis", "garvis"]
 NO_LETRAS = re.compile(r"[^a-záéíóúüñ]")
+VOCATIVOS = {"oye", "hola", "eh", "ey", "hey", "buenas", "bueno", "venga", "vale", "ok", "okey", "perdona", "oiga",
+             "buenos", "dias", "tardes", "noches", "días", "porfa", "por", "favor", "y", "a", "ver"}
 
 
 def separar_nombre(texto: str) -> tuple[bool, str]:
-    """¿Empieza la frase llamando a Jarvis? Devuelve (llamado, resto de la frase)."""
+    """¿Empieza la frase llamando al asistente por su nombre? Devuelve (llamado, resto de la frase)."""
     palabras = texto.split()
+    variantes = perfil.variantes()
+    largo = len(perfil.nombre())
+    corte = 0.72 if largo >= 6 else 0.8 if largo >= 5 else 0.9   # nombres cortos: más exigente
+    # «Jarvis» no es una palabra normal y vale en cualquiera de las 4 primeras. Otro nombre («Viernes», «Luna»)
+    # puede salir en una frase normal («el viernes tengo cita»): tiene que ir al principio o tras un saludo.
+    estricto = perfil.nombre().lower() != "jarvis"
     for i, p in enumerate(palabras[:4]):                 # admite "Oye, Jarvis…" o "Bueno Jarvis…"
         limpia = NO_LETRAS.sub("", p.lower())
-        if len(limpia) >= 4 and difflib.get_close_matches(limpia, VARIANTES_NOMBRE, n=1, cutoff=0.72):
+        if estricto and i > 0 and not all(NO_LETRAS.sub("", q.lower()) in VOCATIVOS for q in palabras[:i]):
+            break
+        if len(limpia) >= 3 and difflib.get_close_matches(limpia, variantes, n=1, cutoff=corte):
             return True, " ".join(palabras[i + 1:]).strip(" ,.;:¿?¡!")
     return False, ""
 
@@ -506,12 +516,19 @@ def buscar_voz() -> Path:
     if os.environ.get("JARVIS_VOZ"):
         return Path(os.environ["JARVIS_VOZ"]).expanduser()
     voces = sorted(p for p in INSTALACION.rglob("*.onnx") if "venv" not in p.parts and Path(str(p) + ".json").exists())
-    preferida = [v for v in voces if "sharvard" in v.name]      # voz de mayordomo elegida por el señor
+    elegida = str((perfil.perfil().get("voz") or {}).get("modelo") or "").strip()
+    if elegida:                                                  # la del perfil (nombre del modelo o ruta)
+        if Path(elegida).expanduser().exists():
+            return Path(elegida).expanduser()
+        coinciden = [v for v in voces if v.name.startswith(elegida.removesuffix(".onnx"))]
+        if coinciden:
+            return coinciden[0]
+    preferida = [v for v in voces if "sharvard" in v.name]      # la del Jarvis original
     if preferida:
         return preferida[0]
     medias = [v for v in voces if "medium" in v.name]
     if not (medias or voces):
-        sys.exit("No encuentro ninguna voz de Piper (.onnx + .onnx.json) dentro de ~/jarvis.")
+        sys.exit(f"No encuentro ninguna voz de Piper (.onnx + .onnx.json) dentro de {INSTALACION}.")
     return (medias or voces)[0]
 
 
@@ -539,8 +556,10 @@ class Voz:
         except (OSError, ValueError):
             hablantes = 1
         # sharvard tiene 2 hablantes: el 1 es el que suena a mayordomo. Algo más pausado que el normal.
-        self.hablante = int(os.environ.get("JARVIS_VOZ_HABLANTE", "1")) if hablantes > 1 else None
-        self.lentitud = float(os.environ.get("JARVIS_VOZ_LENTITUD", "1.05"))
+        ajustes = perfil.perfil().get("voz") or {}
+        hablante = os.environ.get("JARVIS_VOZ_HABLANTE") or ajustes.get("hablante")
+        self.hablante = int(hablante if hablante is not None else 1) if hablantes > 1 else None
+        self.lentitud = float(os.environ.get("JARVIS_VOZ_LENTITUD") or ajustes.get("lentitud") or 1.05)
         self.config = None
         try:
             from piper import SynthesisConfig
@@ -916,7 +935,7 @@ class Jarvis:
         vistos: dict[str, None] = {}
         for tx in textos:
             for i, w in enumerate(re.findall(r"[A-ZÁÉÍÓÚÑ][\wáéíóúñü]{2,}", tx)):
-                if (i > 0 or not tx.startswith(w)) and w.lower() not in ("jarvis", "seat", "mi", "el", "la"):
+                if (i > 0 or not tx.startswith(w)) and w.lower() not in (perfil.nombre().lower(), "seat", "mi", "el", "la"):
                     vistos.setdefault(w, None)
         pista = ("Nombres que pueden salir: " + ", ".join(list(vistos)[:30]) + ".") if vistos else ""
         self._vocab = (time.time(), pista)
@@ -1058,6 +1077,7 @@ class Jarvis:
 
     # ---------- salida
     def decir(self, texto: str, susurro: bool | None = None) -> None:
+        texto = con_nombre(texto)                         # el asistente puede llamarse de otra forma
         if not getattr(self._canal, "respondiendo", False) and not self.molestar.permite(texto):
             log(f"Jarvis (no molestar) › {texto}")       # por su cuenta y en silencio: a la pantalla y al móvil
             self.ui.enviar(tipo="texto", jarvis=texto)

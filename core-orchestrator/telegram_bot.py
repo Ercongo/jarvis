@@ -22,7 +22,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 from typing import Callable
-from perfil import SECRETOS
+from perfil import SECRETOS, con_nombre
 
 CONFIG = SECRETOS / "telegram.json"
 TMP = Path("/tmp/jarvis")
@@ -69,6 +69,7 @@ class Telegram:
             return json.load(r)
 
     def enviar(self, texto: str, chat: int | None = None) -> None:
+        texto = con_nombre(texto)
         chat = chat or self.dueno
         if not (self.activo and chat):
             return

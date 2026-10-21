@@ -26,7 +26,7 @@ import wave
 from pathlib import Path
 
 import numpy as np
-from perfil import SECRETOS
+from perfil import SECRETOS, con_nombre, perfil
 
 CONFIG = SECRETOS / "groq.json"
 API = "https://api.groq.com/openai/v1"
@@ -194,7 +194,8 @@ class Cerebro:
     def transcribir(self, audio: np.ndarray, pista: str = "") -> str:
         frontera = uuid.uuid4().hex
         campos = {"model": self.modelo_voz, "language": "es", "temperature": "0", "response_format": "json",
-                  "prompt": ("Conversación en español de España con Jarvis, un asistente personal. " + pista)[:800]}
+                  "prompt": (con_nombre("Conversación en español de España con Jarvis, un asistente personal. ")
+                             + pista)[:800]}
         cuerpo = b"".join(f'--{frontera}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
                           for k, v in campos.items())
         cuerpo += (f'--{frontera}\r\nContent-Disposition: form-data; name="file"; filename="frase.wav"\r\n'
@@ -298,7 +299,7 @@ class Cerebro:
         ahora = dt.datetime.now()
         tabla = ", ".join(f"{DIAS[(ahora + dt.timedelta(days=i)).weekday()]} {(ahora + dt.timedelta(days=i)):%d/%m}"
                           + (" (hoy)" if i == 0 else " (mañana)" if i == 1 else "") for i in range(15))
-        sistema = PROMPT.format(
+        sistema = (con_nombre(PROMPT) + identidad()).format(
             ahora=f"{DIAS[ahora.weekday()]} {ahora.day} de {MESES[ahora.month - 1]} de {ahora.year}, {ahora:%H:%M}",
             hoy=ahora.date().isoformat(), tabla=tabla, ordenes=contexto.get("ordenes", ""),
             memoria=contexto.get("memoria") or "nada", calendario=contexto.get("calendario") or "vacío",
@@ -309,6 +310,21 @@ class Cerebro:
         mensajes = [{"role": "system", "content": sistema}] + previos + [{"role": "user", "content": texto}]
         bruto = self.chat(mensajes, formato_json=True, max_tokens=1200, temperatura=0.2)
         return leer_plan(bruto)
+
+
+def identidad() -> str:
+    """Cómo es el asistente según el perfil: su género y cómo trata a la persona (llaves dobladas: va a .format)."""
+    p = perfil()
+    partes = []
+    if str(p.get("genero", "")).lower().startswith("f"):
+        partes.append("Eres una asistente: habla de ti en femenino (\"estoy lista\", \"encantada\").")
+    usuario = p.get("usuario") or {}
+    if usuario.get("nombre"):
+        partes.append(f"La persona se llama {usuario['nombre']}.")
+    if usuario.get("trato"):
+        partes.append(f"Trátala así: {usuario['trato']}.")
+    texto = ("\n" + " ".join(partes)) if partes else ""
+    return texto.replace("{", "{{").replace("}", "}}")
 
 
 def leer_plan(bruto: str) -> dict:
