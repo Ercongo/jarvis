@@ -7,7 +7,7 @@ if [ "$(id -u)" != 0 ]; then
   echo "Ejecútalo así:  sudo bash ~/jarvis/configurar_mantenimiento.sh"
   exit 1
 fi
-USUARIO="${SUDO_USER:-usuario}"
+USUARIO="${SUDO_USER:-$(logname 2>/dev/null || id -un)}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 install -o root -g root -m 755 "$DIR/jarvis-mantenimiento" /usr/local/sbin/jarvis-mantenimiento
 echo "$USUARIO ALL=(root) NOPASSWD: /usr/local/sbin/jarvis-mantenimiento" > /etc/sudoers.d/jarvis-mantenimiento

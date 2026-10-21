@@ -945,7 +945,7 @@ class Jarvis:
 
     def _vocabulario(self) -> str:
         """Nombres propios que el usuario usa (de su memoria y su calendario): así whisper escribe «Serveo» y no
-        «Cerveo», o «Gelves» y no «Jelvez». Se recalcula cada 5 minutos."""
+        «Cerveo», o el nombre de su pueblo bien escrito. Se recalcula cada 5 minutos."""
         cache = getattr(self, "_vocab", None)
         if cache and time.time() - cache[0] < 300:
             return cache[1]
