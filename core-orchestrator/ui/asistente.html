@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configuración del asistente</title>
+<style>
+  @font-face { font-family: "Orbitron"; font-weight: 700; src: url(/fuentes/orbitron-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Rajdhani"; font-weight: 500; src: url(/fuentes/rajdhani-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Rajdhani"; font-weight: 600; src: url(/fuentes/rajdhani-latin-600-normal.woff2) format("woff2"); }
+  :root {
+    --fondo: #01040a; --panel: rgba(6, 26, 40, .72); --tinta: #cdf7ff; --tenue: #6d9aa6;
+    --acento: #38e8ff; --rgb: 56, 232, 255; --bien: #5cffa8; --mal: #ff5c6c; --aviso: #ffb547;
+    --titulo: "Orbitron", "DejaVu Sans", sans-serif; --texto: "Rajdhani", "Ubuntu", "DejaVu Sans", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--fondo); color: var(--tinta); font: 500 19px/1.45 var(--texto); }
+  body { background: radial-gradient(ellipse at 30% 0%, rgba(var(--rgb), .10), transparent 60%), var(--fondo); }
+  a { color: var(--acento); }
+  .app { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  nav { border-right: 1px solid rgba(var(--rgb), .25); padding: 28px 18px; }
+  .marca { font: 700 20px var(--titulo); letter-spacing: .18em; color: var(--acento); margin-bottom: 24px;
+           text-shadow: 0 0 14px rgba(var(--rgb), .6); }
+  nav ol { list-style: none; margin: 0; padding: 0; counter-reset: p; }
+  nav li { counter-increment: p; padding: 8px 10px; margin: 2px 0; border-left: 2px solid transparent; color: var(--tenue);
+           cursor: pointer; }
+  nav li::before { content: counter(p, decimal-leading-zero) "  "; font-family: var(--titulo); font-size: 12px; }
+  nav li.hecho { color: var(--tinta); }
+  nav li.actual { color: var(--acento); border-left-color: var(--acento); background: rgba(var(--rgb), .08); }
+  main { padding: 34px 40px 120px; max-width: 980px; }
+  h1 { font: 700 26px var(--titulo); letter-spacing: .08em; margin: 0 0 6px; color: var(--acento); }
+  h2 { font: 700 15px var(--titulo); letter-spacing: .1em; color: var(--tinta); margin: 28px 0 10px; }
+  .sub { color: var(--tenue); margin: 0 0 22px; }
+  .tarjeta { background: var(--panel); border: 1px solid rgba(var(--rgb), .22); padding: 18px 20px; margin: 12px 0;
+             clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px)); }
+  label { display: block; margin: 10px 0 4px; color: var(--tenue); font-weight: 600; }
+  input[type=text], input[type=password], select, textarea { width: 100%; max-width: 520px; background: #031520;
+         color: var(--tinta); border: 1px solid rgba(var(--rgb), .35); padding: 9px 11px; font: 500 18px var(--texto); }
+  textarea { min-height: 90px; font-family: monospace; font-size: 14px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--acento); }
+  button { background: transparent; color: var(--acento); border: 1px solid var(--acento); padding: 8px 16px;
+           font: 700 13px var(--titulo); letter-spacing: .08em; cursor: pointer; margin: 6px 8px 6px 0; }
+  button:hover { background: rgba(var(--rgb), .12); }
+  button.principal { background: var(--acento); color: #00131c; }
+  button:disabled { opacity: .4; cursor: default; }
+  .fila { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .opcion { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(var(--rgb), .1); }
+  .opcion:last-child { border-bottom: 0; }
+  .opcion .nombre { flex: 1; }
+  .msg { margin: 8px 0; min-height: 1.4em; }
+  .msg.bien { color: var(--bien); } .msg.mal { color: var(--mal); } .msg.aviso { color: var(--aviso); }
+  .muestras { display: flex; gap: 10px; flex-wrap: wrap; }
+  .muestra { width: 44px; height: 44px; border: 2px solid transparent; cursor: pointer; }
+  .muestra.sel { border-color: #fff; }
+  .vista { display: flex; align-items: center; gap: 22px; padding: 18px; background: #020a12; margin-top: 14px; }
+  .reactor { width: 92px; height: 92px; border-radius: 50%; border: 3px solid var(--acento);
+             box-shadow: 0 0 26px rgba(var(--rgb), .7), inset 0 0 24px rgba(var(--rgb), .5); display: grid; place-items: center; }
+  .reactor::after { content: ""; width: 34px; height: 34px; border-radius: 50%; background: var(--acento);
+                    box-shadow: 0 0 22px var(--acento); }
+  .siglas { font: 700 28px var(--titulo); letter-spacing: .2em; color: #effdff; text-shadow: 0 0 14px rgba(var(--rgb), .7); }
+  .barra { height: 6px; background: rgba(var(--rgb), .15); width: 160px; } .barra i { display: block; height: 100%; background: var(--acento); }
+  .estado { font-size: 15px; color: var(--tenue); }
+  .ok { color: var(--bien); } .no { color: var(--tenue); }
+  details summary { cursor: pointer; color: var(--acento); margin: 8px 0; }
+  ol.guia { margin: 6px 0 10px 20px; padding: 0; } ol.guia li { margin: 4px 0; }
+  .pie { position: fixed; bottom: 0; left: 260px; right: 0; padding: 14px 40px; background: rgba(1, 4, 10, .92);
+         border-top: 1px solid rgba(var(--rgb), .25); display: flex; justify-content: space-between; align-items: center; }
+  .codigo { font: 700 34px var(--titulo); letter-spacing: .3em; color: var(--acento); }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; } nav { border-right: 0; border-bottom: 1px solid rgba(var(--rgb), .25); padding: 14px 16px; }
+    nav ol { display: flex; flex-wrap: wrap; gap: 4px; } nav li { padding: 4px 8px; font-size: 15px; }
+    main { padding: 20px 16px 120px; } .pie { left: 0; padding: 12px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav>
+    <div class="marca" id="marca">J.A.R.V.I.S</div>
+    <ol id="pasos"></ol>
+  </nav>
+  <main id="contenido"></main>
+</div>
+<div class="pie">
+  <label style="margin:0"><input type="checkbox" id="hablar" checked> Que me hable en cada paso</label>
+  <div><button id="atras">Atrás</button><button id="siguiente" class="principal">Siguiente</button></div>
+</div>
+
+<script>
+"use strict";
+const PASOS = [
+  ["bienvenida", "Bienvenida"], ["tu", "Tú"], ["asistente", "Nombre"], ["aspecto", "Aspecto"], ["voz", "Voz"],
+  ["pantallas", "Pantallas"], ["equipo", "Este equipo"], ["cuentas", "Cuentas"], ["perfil", "Traer perfil"], ["listo", "Terminar"],
+];
+let E = null;           // estado que manda el servidor
+let paso = 0;
+const visitados = new Set([0]);
+const $ = (s, r = document) => r.querySelector(s);
+
+async function api(ruta, datos) {
+  const op = datos === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json", "X-Asistente": "1" },
+                                         body: JSON.stringify(datos) };
+  const r = await fetch("/asistente/" + ruta, op);
+  return r.json();
+}
+async function recargar() { E = await api("estado"); aplicarColor(E.perfil.color); $("#marca").textContent = siglas(E.perfil.nombre); }
+function siglas(n) { return (n || "Jarvis").toUpperCase().replace(/[^A-ZÁÉÍÓÚÑÜ0-9]/g, "").split("").join("."); }
+function aplicarColor(c) {
+  if (!/^#[0-9a-f]{6}$/i.test(c || "")) return;
+  const r = parseInt(c.slice(1, 3), 16), g = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
+  document.documentElement.style.setProperty("--acento", c);
+  document.documentElement.style.setProperty("--rgb", `${r}, ${g}, ${b}`);
+}
+function el(tag, attrs = {}, ...hijos) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "on") for (const [ev, f] of Object.entries(v)) e.addEventListener(ev, f);
+    else if (k === "class") e.className = v; else if (k in e && k !== "list") e[k] = v; else e.setAttribute(k, v);
+  }
+  for (const h of hijos.flat()) if (h !== null && h !== undefined) e.append(h.nodeType ? h : document.createTextNode(h));
+  return e;
+}
+function mensaje(nodo, r) { nodo.textContent = r.mensaje || (r.ok ? "Hecho." : "No ha funcionado."); nodo.className = "msg " + (r.ok ? "bien" : "mal"); }
+async function guardar(cambios) { const r = await api("perfil", cambios); if (r.ok) E.perfil = r.perfil; return r; }
+function hablar(texto) { if ($("#hablar").checked && E && E.voces.instaladas.length) api("decir", { texto }); }
+
+// ------------------------------------------------------------------ pasos
+const VISTAS = {
+  bienvenida() {
+    const idiomas = [["es-ES", "Español (España)"], ["es-MX", "Español (México)"], ["es-AR", "Español (Argentina)"],
+      ["en-US", "English (US)"], ["en-GB", "English (UK)"], ["fr-FR", "Français"], ["de-DE", "Deutsch"],
+      ["it-IT", "Italiano"], ["pt-BR", "Português (Brasil)"], ["ca-ES", "Català"]];
+    const sel = el("select", { on: { change: e => guardar({ idioma: e.target.value }) } },
+      idiomas.map(([v, t]) => el("option", { value: v, selected: E.perfil.idioma === v }, t)));
+    return [el("h1", {}, "Hola"), el("p", { class: "sub" }, "Vamos a dejar el asistente a tu gusto. Todo se puede cambiar después diciendo «abre la configuración»."),
+      el("div", { class: "tarjeta" }, el("label", {}, "Idioma"), sel,
+        el("p", { class: "estado" }, "De momento entiende y habla en español; los demás idiomas llegarán más adelante. Las voces de otros idiomas ya se pueden elegir."))];
+  },
+  tu() {
+    const u = E.perfil.usuario || {};
+    const nombre = el("input", { type: "text", value: u.nombre || "", placeholder: "Por ejemplo: Ana" });
+    const trato = el("input", { type: "text", value: u.trato || "", placeholder: "Por ejemplo: llámame «mi señor» y háblame de usted" });
+    const guarda = () => guardar({ usuario: { nombre: nombre.value.trim(), trato: trato.value.trim() } });
+    nombre.addEventListener("change", guarda); trato.addEventListener("change", guarda);
+    return [el("h1", {}, "Sobre ti"), el("p", { class: "sub" }, "Para saludarte y hablarte como prefieras."),
+      el("div", { class: "tarjeta" }, el("label", {}, "Cómo te llamas"), nombre, el("label", {}, "Cómo quieres que te trate (opcional)"), trato)];
+  },
+  asistente() {
+    const p = E.perfil;
+    const nombre = el("input", { type: "text", value: p.nombre, maxLength: 24 });
+    const aviso = el("p", { class: "msg aviso" });
+    const res = el("p", { class: "msg" });
+    const extra = el("input", { type: "text", value: (p.activacion || []).join(", "), placeholder: "otras formas en que se le entiende, separadas por comas" });
+    const genero = el("div", { class: "fila" }, ["masculino", "femenino"].map(g => el("label", { style: "margin:0" },
+      el("input", { type: "radio", name: "genero", value: g, checked: p.genero === g, on: { change: () => guardar({ genero: g }) } }),
+      g === "masculino" ? " Habla de sí mismo en masculino" : " Habla de sí misma en femenino")));
+    nombre.addEventListener("change", async () => {
+      const r = await guardar({ nombre: nombre.value }); nombre.value = r.perfil.nombre;
+      aviso.textContent = r.aviso || ""; $("#marca").textContent = siglas(r.perfil.nombre);
+    });
+    extra.addEventListener("change", () => guardar({ activacion: extra.value.split(",").map(s => s.trim()).filter(Boolean) }));
+    const probar = el("button", { on: { click: async () => {
+      probar.disabled = true; res.className = "msg"; res.textContent = `Di ahora «${E.perfil.nombre}, qué hora es»…`;
+      const r = await api("activacion/probar", { segundos: 4 }); probar.disabled = false;
+      res.textContent = r.mensaje || ""; res.className = "msg " + (r.ok && r.despierta ? "bien" : "mal");
+    } } }, "Probar con el micrófono");
+    if (!E.microfono) probar.disabled = true;
+    return [el("h1", {}, "Su nombre"), el("p", { class: "sub" }, "Se despierta cuando le llamas por su nombre."),
+      el("div", { class: "tarjeta" }, el("label", {}, "Nombre del asistente"), nombre, aviso, el("label", {}, "Cómo habla"), genero),
+      el("div", { class: "tarjeta" }, el("h2", {}, "Probar la activación"),
+        el("p", { class: "estado" }, "Pulsa, y en los 4 segundos siguientes llámale como lo harías normalmente."), probar, res,
+        el("label", {}, "Palabras extra que también le despiertan"), extra)];
+  },
+  aspecto() {
+    const colores = ["#38e8ff", "#5cffa8", "#ffb547", "#ff5c6c", "#b98cff", "#ff7ad9", "#ffffff", "#ffd84a", "#3d7bff"];
+    const elegir = el("input", { type: "color", value: E.perfil.color, on: { input: e => { aplicarColor(e.target.value); }, change: e => fijar(e.target.value) } });
+    const muestras = el("div", { class: "muestras" }, colores.map(c => el("div", { class: "muestra" + (c === E.perfil.color ? " sel" : ""),
+      style: `background:${c}`, title: c, on: { click: () => { elegir.value = c; fijar(c); } } })));
+    function fijar(c) { aplicarColor(c); guardar({ color: c }); muestras.querySelectorAll(".muestra").forEach(m => m.classList.toggle("sel", m.title === c)); }
+    return [el("h1", {}, "Aspecto"), el("p", { class: "sub" }, "El color principal de la interfaz."),
+      el("div", { class: "tarjeta" }, muestras, el("label", {}, "O cualquier otro"), elegir,
+        el("div", { class: "vista" }, el("div", { class: "reactor" }), el("div", {}, el("div", { class: "siglas" }, siglas(E.perfil.nombre)),
+          el("div", { class: "estado" }, `En espera · diga «${E.perfil.nombre}»`))))];
+  },
+  voz() {
+    const v = E.perfil.voz || {};
+    const inst = E.voces.instaladas;
+    const lista = el("div", { class: "tarjeta" }, el("h2", {}, "Voces instaladas"));
+    if (!inst.length) lista.append(el("p", { class: "msg aviso" }, "No hay ninguna voz todavía: descarga una de abajo."));
+    for (const x of inst) {
+      const elegida = (v.modelo || "").startsWith(x.modelo) || (!v.modelo && x.modelo.includes("sharvard"));
+      const hab = x.hablantes > 1 ? el("select", { on: { change: e => guardar({ voz: { modelo: x.modelo, hablante: +e.target.value } }) } },
+        [...Array(x.hablantes).keys()].map(i => el("option", { value: i, selected: (v.hablante ?? 1) === i }, `voz ${i}`))) : null;
+      lista.append(el("div", { class: "opcion" },
+        el("input", { type: "radio", name: "voz", checked: elegida, on: { change: () => guardar({ voz: { modelo: x.modelo, hablante: hab ? +hab.value : null } }) } }),
+        el("span", { class: "nombre" }, x.modelo), hab,
+        el("button", { on: { click: () => api("voz/probar", { modelo: x.modelo, hablante: hab ? +hab.value : null }) } }, "Escuchar")));
+    }
+    const cat = el("div", { class: "tarjeta" }, el("h2", {}, "Descargar más voces (Piper, sin internet al usarlas)"));
+    for (const c of E.voces.catalogo) {
+      if (inst.some(i => i.modelo === c.modelo)) continue;
+      const d = E.voces.descargas[c.modelo] || {};
+      const prog = el("span", { class: "estado" }, d.estado === "bajando" ? `${d.hecho || 0} %` : d.estado === "error" ? "falló" : `${c.mb} MB`);
+      cat.append(el("div", { class: "opcion" }, el("span", { class: "nombre" }, `${c.texto} `, el("span", { class: "estado" }, `(${c.idioma})`)), prog,
+        el("button", { disabled: d.estado === "bajando", on: { click: async e => { e.target.disabled = true; await api("voz/descargar", { modelo: c.modelo }); seguirDescargas(); } } }, "Descargar")));
+    }
+    return [el("h1", {}, "Voz"), el("p", { class: "sub" }, "Las voces de Piper suenan en el propio ordenador. Las voces online más naturales y la voz clonada llegarán en una fase siguiente."),
+      lista, cat];
+  },
+  pantallas() {
+    const ps = E.pantallas, aj = E.perfil.pantallas || {};
+    if (!ps.length) return [el("h1", {}, "Pantallas"), el("p", { class: "msg aviso" }, "No he podido ver las pantallas (¿sin sesión gráfica?). Se decidirá solo al arrancar.")];
+    const opc = (sel, extra) => [["auto", "Automático"], ...extra, ...ps.map(s => [s.nombre, `${s.nombre} · ${s.geo || "?"}${s.interna ? " · del portátil" : ""}${s.principal ? " · principal" : ""}`])]
+      .map(([v, t]) => el("option", { value: v, selected: (sel || "auto") === v }, t));
+    const interfaz = el("select", {}, opc(aj.interfaz, [["ventana", "En una ventana normal"]]));
+    const trabajo = el("select", {}, opc(aj.trabajo, []));
+    const colocar = el("select", {}, [["no", "No tocar la posición"], ["izquierda", "A la izquierda"], ["derecha", "A la derecha"], ["arriba", "Encima"], ["abajo", "Debajo"]]
+      .map(([v, t]) => el("option", { value: v, selected: (aj.colocar || "no") === v }, t)));
+    const guarda = () => guardar({ pantallas: { interfaz: interfaz.value, trabajo: trabajo.value, colocar: colocar.value } });
+    [interfaz, trabajo, colocar].forEach(s => s.addEventListener("change", guarda));
+    const hay2 = ps.length > 1;
+    return [el("h1", {}, "Pantallas"), el("p", { class: "sub" }, hay2 ? `Tienes ${ps.length} pantallas. Ahora mismo: interfaz en ${E.plan.interfaz}, trabajo en ${E.plan.trabajo}.`
+      : "Hay una sola pantalla: la interfaz irá a pantalla completa y lo que abras se pondrá encima."),
+      el("div", { class: "tarjeta" }, el("label", {}, "Dónde va la interfaz"), interfaz,
+        hay2 ? el("label", {}, "Dónde trabajas (aquí se abren los programas)") : null, hay2 ? trabajo : null,
+        hay2 ? el("label", {}, "Dónde está el monitor de la interfaz respecto al de trabajo") : null, hay2 ? colocar : null)];
+  },
+  equipo() {
+    const q = E.equipo, r = E.recomendado;
+    const usar = el("input", { type: "checkbox", checked: !!(E.perfil.equipo || {}).recomendado, on: { change: e => guardar({ equipo: { recomendado: e.target.checked, ...r } }) } });
+    return [el("h1", {}, "Este equipo"), el("p", { class: "sub" }, `${q.portatil ? "Portátil" : "Sobremesa"} · ${q.cpu} · ${q.nucleos} núcleos · ${q.ram_gb} GB de RAM · ${q.disco_libre_gb} GB libres`),
+      el("div", { class: "tarjeta" }, el("h2", {}, "Gráfica"), el("p", {}, (q.graficas || []).join(" · ") || "desconocida")),
+      el("div", { class: "tarjeta" }, el("h2", {}, "Recomendado"),
+        el("div", { class: "opcion" }, el("span", { class: "nombre" }, "Reconocimiento de voz local"), el("b", {}, r.whisper_local)),
+        el("div", { class: "opcion" }, el("span", { class: "nombre" }, "IA local de reserva (sin internet)"), el("b", {}, r.ia_local || "ninguna")),
+        el("div", { class: "opcion" }, el("span", { class: "nombre" }, "Efectos de la interfaz"), el("b", {}, r.efectos_interfaz)),
+        el("div", { class: "opcion" }, el("span", { class: "nombre" }, "Música con IA en el propio equipo"), el("b", {}, r.musica_ia_local ? "sí" : "no (se usan las gratuitas de internet)")),
+        el("div", { class: "opcion" }, el("span", { class: "nombre" }, "Navegador sin aceleración (gráficas que se cuelgan)"), el("b", {}, r.sin_aceleracion ? "sí" : "no hace falta")),
+        (r.avisos || []).map(a => el("p", { class: "msg aviso" }, a)),
+        el("label", {}, usar, " Usar estas recomendaciones"))];
+  },
+  cuentas() {
+    const c = E.cuentas;
+    const estado = (ok, txt) => el("span", { class: ok ? "ok" : "no" }, ok ? "✔ " + txt : "· sin configurar");
+    // Groq
+    const groq = el("input", { type: "password", placeholder: "gsk_…" }), mg = el("p", { class: "msg" });
+    // Telegram
+    const tg = el("input", { type: "password", placeholder: "123456789:AA…" }), mt = el("p", { class: "msg" }), cod = el("div", { class: "codigo" }, c.telegram.codigo || "");
+    // Google
+    const gj = el("textarea", { placeholder: "Pega aquí el contenido del archivo client_secret_….json, o elígelo abajo" });
+    const gf = el("input", { type: "file", accept: ".json,application/json", on: { change: async e => { gj.value = await e.target.files[0].text(); } } });
+    const mgg = el("p", { class: "msg" });
+    // GitHub
+    const gh = el("input", { type: "password", placeholder: "github_pat_…" }), mgh = el("p", { class: "msg" });
+    return [el("h1", {}, "Cuentas"), el("p", { class: "sub" }, "Todas opcionales. Las claves se guardan solo en este equipo, protegidas, y nunca se suben a ningún sitio."),
+      el("div", { class: "tarjeta" }, el("h2", {}, "Cerebro en la nube · Groq (gratis) "), estado(c.groq, "conectado"),
+        el("ol", { class: "guia" }, el("li", {}, "Entra en ", el("a", { href: "https://console.groq.com/keys", target: "_blank" }, "console.groq.com/keys"), " con tu cuenta (la de Google vale)."),
+          el("li", {}, "Pulsa «Create API Key», ponle un nombre y copia la clave."), el("li", {}, "Pégala aquí.")),
+        groq, el("div", {}, el("button", { on: { click: async () => { mensaje(mg, await api("groq", { clave: groq.value })); groq.value = ""; recargar(); } } }, "Guardar")), mg),
+      el("div", { class: "tarjeta" }, el("h2", {}, "Telegram (para hablarle desde el móvil) "), estado(c.telegram.vinculado, "vinculado" + (c.telegram.bot ? " · @" + c.telegram.bot : "")),
+        el("ol", { class: "guia" }, el("li", {}, "En Telegram, abre ", el("a", { href: "https://t.me/BotFather", target: "_blank" }, "@BotFather"), " y mándale /newbot."),
+          el("li", {}, "Ponle un nombre y un usuario acabado en «bot». Te dará un token."), el("li", {}, "Pégalo aquí y manda a tu bot el código que aparezca.")),
+        tg, el("div", {}, el("button", { on: { click: async () => { const r = await api("telegram", { token: tg.value }); mensaje(mt, r); tg.value = ""; cod.textContent = r.codigo || ""; if (r.codigo) seguirTelegram(); } } }, "Guardar")), mt, cod),
+      el("div", { class: "tarjeta" }, el("h2", {}, "Google: Gmail y Calendario "), estado(c.google.conectada, c.google.email || "conectada"),
+        el("details", {}, el("summary", {}, "Cómo crear tu propia app de Google (unos 15 minutos, una sola vez)"),
+          el("ol", { class: "guia" },
+            el("li", {}, "Entra en ", el("a", { href: "https://console.cloud.google.com/projectcreate", target: "_blank" }, "Google Cloud"), " y crea un proyecto (por ejemplo, «Asistente»)."),
+            el("li", {}, "Activa la ", el("a", { href: "https://console.cloud.google.com/apis/library/gmail.googleapis.com", target: "_blank" }, "API de Gmail"), " y la ",
+              el("a", { href: "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com", target: "_blank" }, "API de Google Calendar"), "."),
+            el("li", {}, "En ", el("a", { href: "https://console.cloud.google.com/auth/overview", target: "_blank" }, "Pantalla de consentimiento"), " elige «Externo», rellena el nombre y tu correo, y en «Público» añade tu correo como usuario de prueba."),
+            el("li", {}, "En ", el("a", { href: "https://console.cloud.google.com/auth/clients", target: "_blank" }, "Clientes"), " crea un «ID de cliente de OAuth» de tipo «App de escritorio» y descarga el JSON."),
+            el("li", {}, "Sube aquí ese archivo y pulsa «Conectar con Google»."),
+            el("li", {}, "Mientras la app esté «en prueba», Google pide reconectar cada 7 días; el asistente te avisará."))),
+        gj, gf, el("div", {}, el("button", { on: { click: async () => { mensaje(mgg, await api("google/cliente", { json: gj.value })); recargar(); } } }, "Guardar credenciales"),
+          el("button", { disabled: !c.google.cliente, on: { click: () => window.open("/google/conectar", "_blank") } }, "Conectar con Google")), mgg),
+      el("div", { class: "tarjeta" }, el("h2", {}, "GitHub "), estado(c.github.token, c.github.usuario),
+        el("ol", { class: "guia" }, el("li", {}, "Crea un token en ", el("a", { href: "https://github.com/settings/personal-access-tokens/new", target: "_blank" }, "GitHub → tokens"), " con acceso solo a los repositorios que quieras."),
+          el("li", {}, "Pégalo aquí.")),
+        gh, el("div", {}, el("button", { on: { click: async () => { mensaje(mgh, await api("github", { token: gh.value })); gh.value = ""; recargar(); } } }, "Guardar")), mgh),
+      el("p", { class: "estado" }, "WhatsApp, el móvil (Android/iPhone), YouTube con tu cuenta y las redes sociales llegarán en la fase siguiente.")];
+  },
+  perfil() {
+    const f = el("input", { type: "file", accept: ".jarvisperfil" }), pw = el("input", { type: "password", placeholder: "contraseña del perfil" }), m = el("p", { class: "msg" });
+    const imp = el("button", { on: { click: async () => {
+      if (!f.files[0]) { m.textContent = "Elige el archivo .jarvisperfil"; m.className = "msg mal"; return; }
+      imp.disabled = true; m.textContent = "Abriendo el perfil…"; m.className = "msg";
+      const buf = new Uint8Array(await f.files[0].arrayBuffer()); let bin = ""; for (let i = 0; i < buf.length; i += 32768) bin += String.fromCharCode(...buf.subarray(i, i + 32768));
+      const r = await api("perfil/importar", { archivo: btoa(bin), contrasena: pw.value }); imp.disabled = false; pw.value = "";
+      mensaje(m, r); if (r.aviso) m.textContent += " " + r.aviso; if (r.ok) recargar();
+    } } }, "Traer perfil");
+    const caja = [el("h1", {}, "Traer tu perfil"), el("p", { class: "sub" }, "Si ya usabas el asistente en otro ordenador: guarda allí tu perfil («secretos.py exportar» o desde este mismo paso) y tráelo aquí. Lo que hubiera se guarda antes en una copia."),
+      el("div", { class: "tarjeta" }, el("label", {}, "Archivo"), f, el("label", {}, "Contraseña"), pw, el("div", {}, imp), m)];
+    if (E.embebido) {
+      const dest = el("input", { type: "text", value: "~/Escritorio/mi_asistente.jarvisperfil" }), p1 = el("input", { type: "password", placeholder: "contraseña (mínimo 8)" });
+      const conClaves = el("input", { type: "checkbox", checked: true }), m2 = el("p", { class: "msg" });
+      caja.push(el("div", { class: "tarjeta" }, el("h2", {}, "Guardar el perfil de este equipo para llevarlo a otro"), el("label", {}, "Dónde"), dest, el("label", {}, "Contraseña"), p1,
+        el("label", {}, conClaves, " Incluir las claves (Groq, Telegram, Google…)"),
+        el("div", {}, el("button", { on: { click: async () => { mensaje(m2, await api("perfil/exportar", { destino: dest.value, contrasena: p1.value, claves: conClaves.checked })); p1.value = ""; } } }, "Guardar perfil")), m2));
+    }
+    return caja;
+  },
+  listo() {
+    const p = E.perfil, c = E.cuentas;
+    const fila = (a, b) => el("div", { class: "opcion" }, el("span", { class: "nombre" }, a), el("b", {}, b));
+    const m = el("p", { class: "msg" });
+    return [el("h1", {}, "Todo listo"), el("p", { class: "sub" }, "Revisa el resumen. Al terminar, el asistente se reinicia con estos ajustes."),
+      el("div", { class: "tarjeta" }, fila("Nombre", `${p.nombre} (${p.genero})`), fila("Tú", (p.usuario || {}).nombre || "—"), fila("Idioma", p.idioma),
+        fila("Color", p.color), fila("Voz", ((p.voz || {}).modelo || "la de siempre") + ((p.voz || {}).hablante != null ? ` · voz ${p.voz.hablante}` : "")),
+        fila("Pantallas", `interfaz: ${(p.pantallas || {}).interfaz || "auto"}`), fila("Cerebro en la nube", c.groq ? "Groq" : "solo local"),
+        fila("Telegram", c.telegram.vinculado ? "vinculado" : c.telegram.token ? "pendiente de vincular" : "no"),
+        fila("Google", c.google.conectada ? c.google.email || "conectada" : "no"), fila("GitHub", c.github.token ? c.github.usuario : "no")),
+      el("button", { class: "principal", on: { click: async e => { e.target.disabled = true; mensaje(m, await api("terminar", {})); } } }, "Terminar"), m];
+  },
+};
+
+// ------------------------------------------------------------------ seguimiento
+let tDesc = null, tTg = null;
+function seguirDescargas() {
+  clearTimeout(tDesc);
+  tDesc = setTimeout(async () => { await recargar(); if (PASOS[paso][0] === "voz") pintar(false);
+    if (Object.values(E.voces.descargas).some(d => d.estado === "bajando")) seguirDescargas(); }, 2000);
+}
+function seguirTelegram() {
+  clearTimeout(tTg);
+  tTg = setTimeout(async () => { await recargar(); if (E.cuentas.telegram.vinculado) { if (PASOS[paso][0] === "cuentas") pintar(false); hablar("Telegram vinculado."); }
+    else if (E.cuentas.telegram.codigo) seguirTelegram(); }, 3000);
+}
+
+// ------------------------------------------------------------------ navegación
+function pintar(conVoz = true) {
+  const id = PASOS[paso][0];
+  const lista = $("#pasos"); lista.textContent = "";
+  PASOS.forEach(([pid, t], i) => lista.append(el("li", { class: (i === paso ? "actual " : "") + (visitados.has(i) ? "hecho" : ""),
+    on: { click: () => { paso = i; visitados.add(i); pintar(); } } }, t)));
+  const c = $("#contenido"); const scroll = window.scrollY; c.textContent = ""; c.append(...VISTAS[id]());
+  if (!conVoz) window.scrollTo(0, scroll);
+  $("#atras").disabled = paso === 0; $("#siguiente").style.visibility = paso === PASOS.length - 1 ? "hidden" : "visible";
+  if (conVoz) hablar(E.frases[id] || "");
+}
+$("#atras").addEventListener("click", () => { if (paso > 0) { paso--; pintar(); } });
+$("#siguiente").addEventListener("click", () => { if (paso < PASOS.length - 1) { paso++; visitados.add(paso); window.scrollTo(0, 0); pintar(); } });
+$("#hablar").addEventListener("change", e => { try { localStorage.setItem("asistente_hablar", e.target.checked ? "1" : "0"); } catch (_) {} });
+try { if (localStorage.getItem("asistente_hablar") === "0") $("#hablar").checked = false; } catch (_) {}
+
+recargar().then(() => { pintar(); if (Object.values(E.voces.descargas).some(d => d.estado === "bajando")) seguirDescargas(); });
+</script>
+</body>
+</html>

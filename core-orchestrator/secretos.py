@@ -37,6 +37,7 @@ ARCHIVOS_CLAVE = {      # archivo → para qué es
     "google_cliente.json": "app de Google Cloud",
     "openrouter.json": "Nex / OpenRouter",
     "estudio.json": "herramientas de creación (Hugging Face, Musicful, fal, Runway)",
+    "github.json": "GitHub (token)",
 }
 CLAVES_EN_CONFIG = ("pollinations_token",)     # claves que viven dentro de config.json
 

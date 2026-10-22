@@ -123,7 +123,7 @@ ORDENES_CONOCIDAS = (
     "reproduce/abre/enséñame/mándame la canción/el vídeo/la foto/la imagen/el documento que has creado; "
     "cuando tengas la canción, reprodúcela. "
     "PROGRAMAS: instala <programa> (o el AppImage/deb que está en Descargas); qué programas me has instalado; "
-    "desinstala <programa>. MODO: no me molestes [hasta las <hora>]; ya puedes hablar. "
+    "desinstala <programa>. CONFIGURACIÓN: abre la configuración (cambiar nombre, voz, color, pantallas, cuentas). MODO: no me molestes [hasta las <hora>]; ya puedes hablar. "
     "SABER: investiga [a fondo] sobre <tema>; qué has investigado; olvida lo que investigaste de <tema>; aprende mis "
     "documentos; qué dicen mis documentos sobre <tema>; mantenme informado sobre <tema>; deja de seguir <tema>; "
     "qué hay de nuevo de mis temas; qué sabes de mí; olvida que <dato>. "
@@ -187,6 +187,7 @@ class Interfaz:
         self.saber_ev: dict | None = None
         self.google = None                              # la cuenta de Google (para /google/conectar y /google)
         self.calendario = None                          # lo conecta Jarvis: la página /calendario lo usa
+        self.asistente = None                           # el asistente de configuración (/asistente)
         if not activa:
             return
         try:
@@ -306,6 +307,12 @@ class Interfaz:
                     finally:
                         with ui.lock:
                             ui.clientes.remove(q)
+                elif self.path.startswith("/asistente") and ui.asistente:
+                    r = ui.asistente.responder("GET", self.path)
+                    if r:
+                        self._enviar(*r)
+                    else:
+                        self.send_error(404)
                 else:
                     self.send_error(404)
 
@@ -320,6 +327,17 @@ class Interfaz:
             def do_POST(self):
                 # La cabecera X-Jarvis obliga al navegador a pedir permiso (CORS) si la petición viene de otra web,
                 # y este servidor nunca lo da: solo la propia página del calendario puede cambiarlo.
+                if self.path.startswith("/asistente/") and ui.asistente:
+                    n = int(self.headers.get("Content-Length") or 0)
+                    if self.headers.get("X-Asistente") != "1" or n > 300 * 1024 ** 2:
+                        self.send_error(403)
+                        return
+                    r = ui.asistente.responder("POST", self.path, self.rfile.read(n))
+                    if r:
+                        self._enviar(*r)
+                    else:
+                        self.send_error(404)
+                    return
                 if self.path not in ("/calendario/nuevo", "/calendario/borrar") or not ui.calendario \
                         or self.headers.get("X-Jarvis") != "1":
                     self.send_error(403)
@@ -480,9 +498,16 @@ class Oido:
         return texto
 
 
-NO_LETRAS = re.compile(r"[^a-záéíóúüñ]")
-VOCATIVOS = {"oye", "hola", "eh", "ey", "hey", "buenas", "bueno", "venga", "vale", "ok", "okey", "perdona", "oiga",
-             "buenos", "dias", "tardes", "noches", "días", "porfa", "por", "favor", "y", "a", "ver"}
+NO_LETRAS = perfil.NO_LETRAS
+separar_nombre = perfil.separar_nombre
+
+
+def reiniciar_asistente() -> None:
+    """Tras cambiar la configuración: reinicia el asistente entero (motor e interfaz) en segundo plano."""
+    script = INSTALACION / "reiniciar.sh"
+    if script.exists():
+        subprocess.Popen(["bash", str(script)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
 
 
 def interfaz_personalizada(html: str) -> str:
@@ -506,24 +531,6 @@ def interfaz_personalizada(html: str) -> str:
                  .replace("J.A.R.V.I.S", siglas).replace("«Jarvis»", f"«{nombre}»").replace("de Jarvis", f"de {nombre}"))
         html = cuerpo + titulo + resto
     return html
-
-
-def separar_nombre(texto: str) -> tuple[bool, str]:
-    """¿Empieza la frase llamando al asistente por su nombre? Devuelve (llamado, resto de la frase)."""
-    palabras = texto.split()
-    variantes = perfil.variantes()
-    largo = len(perfil.nombre())
-    corte = 0.72 if largo >= 6 else 0.8 if largo >= 5 else 0.9   # nombres cortos: más exigente
-    # «Jarvis» no es una palabra normal y vale en cualquiera de las 4 primeras. Otro nombre («Viernes», «Luna»)
-    # puede salir en una frase normal («el viernes tengo cita»): tiene que ir al principio o tras un saludo.
-    estricto = perfil.nombre().lower() != "jarvis"
-    for i, p in enumerate(palabras[:4]):                 # admite "Oye, Jarvis…" o "Bueno Jarvis…"
-        limpia = NO_LETRAS.sub("", p.lower())
-        if estricto and i > 0 and not all(NO_LETRAS.sub("", q.lower()) in VOCATIVOS for q in palabras[:i]):
-            break
-        if len(limpia) >= 3 and difflib.get_close_matches(limpia, variantes, n=1, cutoff=corte):
-            return True, " ".join(palabras[i + 1:]).strip(" ,.;:¿?¡!")
-    return False, ""
 
 
 # =============================================================== voz (piper)
@@ -785,6 +792,9 @@ class Jarvis:
                                             desprogramar=self.sist.desprogramar)
         self.google.al_cambiar = self._google_cambia
         self.ui.google = self.google
+        from asistente import Asistente
+        self.asistente = Asistente(log, embebido=True, google=self.google, reiniciar=reiniciar_asistente)
+        self.ui.asistente = self.asistente
         self.correo = Correo(self.google, self.decir, self.confirmar, log, ui=self.ui, cerebro=self.cerebro,
                              resumir=self.resumir, avisar=self.tg.enviar,
                              es_telegram=lambda: getattr(self._canal, "tg", False))
@@ -1359,7 +1369,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.asistente, "asistente"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),

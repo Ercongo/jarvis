@@ -14,6 +14,7 @@ original, así que un PC ya instalado no nota el cambio.
 from __future__ import annotations
 
 import copy
+import difflib
 import json
 import os
 import re
@@ -133,6 +134,29 @@ def variantes(nombre_: str | None = None) -> list[str]:
         if e:
             fuera.add(e)
     return sorted(fuera)
+
+
+NO_LETRAS = re.compile(r"[^a-záéíóúüñ]")
+VOCATIVOS = {"oye", "hola", "eh", "ey", "hey", "buenas", "bueno", "venga", "vale", "ok", "okey", "perdona", "oiga",
+             "buenos", "dias", "tardes", "noches", "días", "porfa", "por", "favor", "y", "a", "ver"}
+
+
+def separar_nombre(texto: str) -> tuple[bool, str]:
+    """¿Empieza la frase llamando al asistente por su nombre? Devuelve (llamado, resto de la frase)."""
+    palabras = texto.split()
+    lista = variantes()
+    largo = len(nombre())
+    corte = 0.72 if largo >= 6 else 0.8 if largo >= 5 else 0.9   # nombres cortos: más exigente
+    # «Jarvis» no es una palabra normal y vale en cualquiera de las 4 primeras. Otro nombre («Viernes», «Luna»)
+    # puede salir en una frase normal («el viernes tengo cita»): tiene que ir al principio o tras un saludo.
+    estricto = nombre().lower() != "jarvis"
+    for i, p in enumerate(palabras[:4]):                 # admite "Oye, Jarvis…" o "Bueno Jarvis…"
+        limpia = NO_LETRAS.sub("", p.lower())
+        if estricto and i > 0 and not all(NO_LETRAS.sub("", q.lower()) in VOCATIVOS for q in palabras[:i]):
+            break
+        if len(limpia) >= 3 and difflib.get_close_matches(limpia, lista, n=1, cutoff=corte):
+            return True, " ".join(palabras[i + 1:]).strip(" ,.;:¿?¡!")
+    return False, ""
 
 
 def con_nombre(texto: str) -> str:
