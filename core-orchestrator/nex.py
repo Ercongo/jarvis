@@ -31,7 +31,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-from perfil import DATOS, SECRETOS
+from perfil import DATOS, SECRETOS, con_nombre
 from herramientas import buscar_archivos, buscar_web, leer_config, guardar_config, leer_texto, normalizar
 from sistema import Respuesta, con_tildes
 
@@ -341,7 +341,7 @@ class Nex:
         ahora = dt.datetime.now().strftime("%d/%m/%Y %H:%M")
         formato = ("puede ser detallado y con viñetas, para leer en el móvil" if tg else
                    "máximo cuatro frases, sin listas ni símbolos, porque se lee en voz alta")
-        mensajes = [{"role": "system", "content": SISTEMA_AGENTE.format(ahora=ahora, ordenes=self.ordenes[:2500],
+        mensajes = [{"role": "system", "content": con_nombre(SISTEMA_AGENTE).format(ahora=ahora, ordenes=self.ordenes[:2500],
                                                                          formato=formato)},
                     {"role": "user", "content": tarea}]
         self._archivos: list[Path] = []

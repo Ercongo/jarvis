@@ -209,6 +209,43 @@ chroot "$MONTAJE" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin 
     HF_HOME=/opt/jarvis/hf-cache /opt/jarvis/venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel(\"base\", device=\"cpu\", compute_type=\"int8\")"
 '  >>"$LOG" 2>&1 || { echo "Ha fallado al preparar el asistente; mira $LOG (se puede reanudar con --reanudar)"; tail -30 "$LOG"; exit 1; }
 
+# ------------------------------------------------------------------ 5b. extras: lo mismo que el portátil original
+# Si algo de esto falla (sin internet, un servidor caído…) el disco sigue valiendo: se apunta y se sigue.
+paso "Extras: otra voz, IA local de reserva y música con IA (lo más largo: varios GB)"
+chroot "$MONTAJE" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin "${ENTORNO_RED[@]}" bash -c '
+    falta() { echo "$1" >> /var/log/paquetes_omitidos.txt; echo "  (omitido: $1)"; }
+    # segunda voz en español (la anterior del primer asistente)
+    V=es_ES-davefx-medium
+    B=https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/davefx/medium/$V.onnx
+    mkdir -p /opt/jarvis/voces/$V
+    { curl -fsSL --retry 3 -o /opt/jarvis/voces/$V/$V.onnx.json $B.json && \
+      curl -fsSL --retry 3 -o /opt/jarvis/voces/$V/$V.onnx $B; } || { rm -rf /opt/jarvis/voces/$V; falta "voz davefx"; }
+    # IA local de reserva: Ollama + qwen2.5:1.5b (contesta sin internet si el cerebro en la nube no puede)
+    if curl -fsSL https://ollama.com/install.sh -o /tmp/ollama.sh && sh /tmp/ollama.sh; then
+        export OLLAMA_MODELS=/usr/share/ollama/.ollama/models
+        mkdir -p $OLLAMA_MODELS
+        ollama serve >/tmp/ollama.log 2>&1 & P=$!
+        sleep 8
+        ollama pull qwen2.5:1.5b || falta "modelo qwen2.5:1.5b"
+        kill $P 2>/dev/null; wait $P 2>/dev/null
+        id ollama >/dev/null 2>&1 && chown -R ollama:ollama /usr/share/ollama
+        systemctl enable ollama 2>/dev/null || true
+    else
+        falta "ollama"
+    fi
+    # música con IA (MusicGen) en su propio entorno, como en el portátil original
+    if python3 -m venv /opt/jarvis/venv_musica && \
+       /opt/jarvis/venv_musica/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cpu && \
+       /opt/jarvis/venv_musica/bin/pip install -q transformers scipy numpy; then
+        HF_HOME=/opt/jarvis/hf-cache /opt/jarvis/venv_musica/bin/python -c "from transformers import AutoProcessor, MusicgenForConditionalGeneration as M; AutoProcessor.from_pretrained(\"facebook/musicgen-small\"); M.from_pretrained(\"facebook/musicgen-small\")" \
+            || falta "modelo musicgen-small"
+    else
+        rm -rf /opt/jarvis/venv_musica; falta "venv_musica (MusicGen)"
+    fi
+    true
+' >>"$LOG" 2>&1 || true
+grep -a "omitido" "$LOG" | tail -5 || true
+
 # ------------------------------------------------------------------ 6. arranque en cualquier PC
 paso "Arranque (UEFI con Secure Boot y BIOS antigua)"
 # El menú de arranque tiene que buscar el sistema por su UUID (en otro PC el disco no se llamará igual que

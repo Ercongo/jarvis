@@ -55,6 +55,12 @@ if [ ! -e /usr/share/xfce4/backdrops/xubuntu-wallpaper.png ]; then
     [ -n "$F" ] && ln -sf "$F" /usr/share/xfce4/backdrops/xubuntu-wallpaper.png
 fi
 
+# lo demás que usa el asistente en el portátil original: vídeo y música (VLC), planos (LibreCAD y LibreDWG para
+# leer DWG), capturas, monitor del sistema, portapapeles y dibujo de LibreOffice
+instalar vlc librecad flameshot btop xsel libreoffice-draw
+apt-get install -y --no-install-recommends libredwg-tools || apt-get install -y --no-install-recommends libredwg-utils \
+    || echo libredwg >> /var/log/paquetes_omitidos.txt
+
 # la red la lleva NetworkManager (wifi y cable en cualquier PC)
 mkdir -p /etc/netplan
 printf 'network:\n  version: 2\n  renderer: NetworkManager\n' > /etc/netplan/01-network-manager.yaml

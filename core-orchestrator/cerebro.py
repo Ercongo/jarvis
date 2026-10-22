@@ -213,6 +213,9 @@ class Cerebro:
     # ---------- cerebro
     def chat(self, mensajes: list[dict], formato_json: bool = False, max_tokens: int = 900,
              temperatura: float = 0.3, timeout: float = 30, ligero: bool = False) -> str:
+        # las instrucciones fijas de los módulos dicen «Eres Jarvis»: con el nombre que tenga el asistente
+        mensajes = [dict(m, content=con_nombre(m["content"])) if m.get("role") == "system" and
+                    isinstance(m.get("content"), str) else m for m in mensajes]
         try:
             return self._chat_groq(mensajes, formato_json, max_tokens, temperatura, timeout, ligero)
         except SinConexion as e:
@@ -239,7 +242,8 @@ class Cerebro:
             # todos cansados: si alguno se recupera en pocos segundos, mejor esperar que contestar mal en local
             m = min(orden, key=lambda x: self._pausa.get(x, 0))
             falta = self._pausa.get(m, 0) - time.time()
-            if falta <= 8:
+            if falta <= 20:          # la IA local de reserva contesta mucho peor: mejor unos segundos de espera
+                self.log(f"cerebro: todos los modelos sin cupo; espero {falta:.0f} s a {m}")
                 time.sleep(max(0.0, falta))
                 candidatos = [m]
         for modelo in candidatos:
@@ -308,7 +312,7 @@ class Cerebro:
             saber=contexto.get("saber") or "nada relacionado")
         previos = [{"role": h["role"], "content": str(h.get("content", ""))[:400]} for h in historial[-8:]]
         mensajes = [{"role": "system", "content": sistema}] + previos + [{"role": "user", "content": texto}]
-        bruto = self.chat(mensajes, formato_json=True, max_tokens=1200, temperatura=0.2)
+        bruto = self.chat(mensajes, formato_json=True, max_tokens=700, temperatura=0.2)   # el cupo por minuto cuenta lo reservado
         return leer_plan(bruto)
 
 

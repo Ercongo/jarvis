@@ -46,7 +46,9 @@ from herramientas import HOME, carpeta_usuario, corto, lanzar, leer_texto, norma
 from sistema import Respuesta, con_tildes
 
 TMP = Path(tempfile.gettempdir()) / "jarvis"
-LIBRECAD = HOME / ".local" / "bin" / "librecad"
+LIBRECAD = HOME / ".local" / "bin" / "librecad"          # el portátil original lo tiene aquí (AppImage)
+if not LIBRECAD.exists() and shutil.which("librecad"):    # en el disco portátil e instalaciones nuevas: el de apt
+    LIBRECAD = Path(shutil.which("librecad"))
 DWG2DXF = HOME / ".local" / "bin" / "dwg2dxf"            # LibreDWG compilado en ~/.local
 
 EXT = {

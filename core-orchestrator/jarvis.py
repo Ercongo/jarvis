@@ -97,6 +97,7 @@ DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "doming
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
          "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
+NO_SE = "Eso todavía no lo sé hacer."
 TIPOS_CEREBRO = {"evento", "recordatorio", "temporizador", "consultar", "borrar_evento", "dato", "ver", "orden"}
 
 ORDENES_CONOCIDAS = (
@@ -152,9 +153,26 @@ SISTEMA = (
 )
 
 
+def sistema_local() -> str:
+    """Las instrucciones de la IA local con el nombre, el género y el trato del perfil (antes decía «soy Jarvis»
+    aunque el asistente se llamara de otra forma)."""
+    texto = perfil.con_nombre(SISTEMA)
+    p = perfil.perfil()
+    if str(p.get("genero", "")).lower().startswith("f"):
+        texto = texto.replace("el asistente personal", "la asistente personal").replace(
+            "con el estilo del mayordomo", "con el estilo de la mayordoma")
+        texto += " Habla de ti en femenino (estoy lista, encantada)."
+    u = p.get("usuario") or {}
+    if u.get("nombre"):
+        texto += f" La persona se llama {u['nombre']}."
+    if u.get("trato"):
+        texto += f" Trátala así: {u['trato']}."
+    return texto + f" Si te preguntan tu nombre, te llamas {perfil.nombre()}."
+
+
 def sistema_con_fecha() -> str:
     ahora = dt.datetime.now()
-    return (f"{SISTEMA} Ahora mismo es {DIAS[ahora.weekday()]} {ahora.day} de {MESES[ahora.month - 1]} "
+    return (f"{sistema_local()} Ahora mismo es {DIAS[ahora.weekday()]} {ahora.day} de {MESES[ahora.month - 1]} "
             f"de {ahora.year}, a las {ahora.hour}:{ahora.minute:02d}. {memoria_para_ia()}").strip()
 
 
@@ -189,6 +207,7 @@ class Interfaz:
         self.google = None                              # la cuenta de Google (para /google/conectar y /google)
         self.calendario = None                          # lo conecta Jarvis: la página /calendario lo usa
         self.asistente = None                           # el asistente de configuración (/asistente)
+        self.ordenar = None                             # POST /orden: lo conecta Jarvis
         if not activa:
             return
         try:
@@ -344,6 +363,16 @@ class Interfaz:
                         self._enviar(*r)
                     else:
                         self.send_error(404)
+                    return
+                if self.path == "/orden" and ui.ordenar and self.headers.get("X-Jarvis") == "1":
+                    # órdenes por escrito desde el propio portátil (pruebas: prueba_todo.sh). Sin voz.
+                    n = int(self.headers.get("Content-Length") or 0)
+                    try:
+                        texto = str(json.loads(self.rfile.read(min(n, 20000)) or b"{}").get("texto") or "")
+                    except (ValueError, AttributeError):
+                        texto = ""
+                    r = ui.ordenar(texto) if texto.strip() else {"texto": "", "origen": "nada"}
+                    self._enviar(200, json.dumps(r, ensure_ascii=False).encode(), "application/json")
                     return
                 if self.path not in ("/calendario/nuevo", "/calendario/borrar") or not ui.calendario \
                         or self.headers.get("X-Jarvis") != "1":
@@ -777,6 +806,7 @@ class Jarvis:
         TMP.mkdir(parents=True, exist_ok=True)
         self.modo_texto = modo_texto
         self.ui = Interfaz()
+        self._lock_escrito = threading.Lock()
         self.ui.poner_estado("arrancando", "Iniciando sistemas")
         esperar_ollama(self.ui)
         self.mic = None if modo_texto else Microfono()
@@ -819,6 +849,7 @@ class Jarvis:
         self.asistente = Asistente(log, embebido=True, google=self.google, reiniciar=reiniciar_asistente,
                                    mientras_habla=self._sordo_durante)
         self.ui.asistente = self.asistente
+        self.ui.ordenar = self.ordenar_por_escrito
         self.correo = Correo(self.google, self.decir, self.confirmar, log, ui=self.ui, cerebro=self.cerebro,
                              resumir=self.resumir, avisar=self.tg.enviar,
                              es_telegram=lambda: getattr(self._canal, "tg", False))
@@ -1252,6 +1283,24 @@ class Jarvis:
         r["texto"] = variar(r["texto"])
         return r
 
+    def ordenar_por_escrito(self, texto: str) -> dict:
+        """Una orden escrita (POST /orden desde el propio portátil): pasa por el cerebro y las reglas igual que
+        hablada, pero no se dice en voz alta. Lo que haya que hacer después (abrir, reproducir…) sí se hace."""
+        with self._lock_escrito:
+            t0 = time.time()
+            texto = separar_nombre(texto)[1] or texto
+            log(f"orden escrita: {texto}")
+            try:
+                r = self.procesar(texto)
+            except Exception as e:
+                log(f"orden escrita: error {e!r}")
+                return {"texto": f"error: {e!r}", "origen": "error", "segundos": round(time.time() - t0, 1)}
+            if r.get("despues"):
+                threading.Thread(target=r["despues"], daemon=True).start()
+            log(f"respuesta escrita ({r.get('origen')}): {r.get('texto', '')[:300]}")
+            return {"texto": r.get("texto", ""), "origen": r.get("origen", ""), "archivo": str(r.get("archivo") or ""),
+                    "segundos": round(time.time() - t0, 1)}
+
     # ---------- cerebro en la nube
     def _con_cerebro(self, entrada: str) -> dict | None:
         t0 = time.time()
@@ -1276,6 +1325,7 @@ class Jarvis:
         log(f"cerebro ({time.time() - t0:.1f}s): {json.dumps(plan, ensure_ascii=False)[:400]}")
         auditar("cerebro", entrada, plan=plan)
         textos, eventos, despues, archivo, susurro = [], [], [], None, None
+        fallos = 0
         for a in plan.get("acciones", [])[:10]:
             if not isinstance(a, dict):
                 continue
@@ -1316,7 +1366,17 @@ class Jarvis:
                 elif tipo == "dato":
                     textos.append(self._guardar_dato(str(a.get("texto", ""))))
                 elif tipo == "orden" and a.get("texto"):
-                    r = self.procesar(str(a["texto"]), profundidad=2)
+                    # el modelo a veces copia la etiqueta de la lista de órdenes («PC: abre terminal»)
+                    orden = re.sub(r"^\s*[A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜ ]{1,24}:\s*", "", str(a["texto"])).strip()
+                    r = self.procesar(orden, profundidad=2)
+                    no_sabe = lambda x: x.get("origen") == "llm"    # a profundidad 2 = «no lo sé hacer»
+                    if no_sabe(r) and normalizar(orden) != normalizar(entrada):
+                        r2 = self.procesar(entrada, profundidad=2)       # con tus palabras tal cual
+                        if not no_sabe(r2):
+                            r = r2
+                    if no_sabe(r):
+                        fallos += 1
+                        log(f"cerebro: orden que no sé hacer: {orden!r}")
                     textos.append(r["texto"])
                     if r.get("despues"):
                         despues.append(r["despues"])
@@ -1339,6 +1399,8 @@ class Jarvis:
                 difflib.SequenceMatcher(None, normalizar(respuesta), normalizar(" ".join(t for t in textos if t))).ratio()
                 > 0.45):
             respuesta = ""                                  # el módulo ya lo ha dicho: no repetirlo
+        if fallos and "?" not in respuesta:
+            respuesta = ""            # no decir «Terminal abierta» si la orden no ha salido
         if respuesta:
             textos.append(respuesta if tg else limpiar_respuesta(respuesta, 5))
         texto = " ".join(dict.fromkeys(t for t in textos if t)).strip() or frase("no_entiendo")
@@ -1448,7 +1510,7 @@ class Jarvis:
             respuesta = accion_local(entrada, self.confirmar)
             origen = "local"
         if respuesta is None and profundidad >= 2 and self.cerebro.activo:
-            return {"texto": "Eso todavía no lo sé hacer.", "susurro": None, "despues": None, "archivo": None,
+            return {"texto": NO_SE, "susurro": None, "despues": None, "archivo": None,
                     "origen": "llm"}
         if respuesta is None:
             origen = "llm"

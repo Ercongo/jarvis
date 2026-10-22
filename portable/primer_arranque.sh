@@ -61,8 +61,11 @@ X-GNOME-Autostart-enabled=true
 EOF
     echo "alias jarvis='bash ~/jarvis/arrancar_jarvis.sh'" >> "$H/.bashrc"
     # el entorno de Python se copió de /opt/jarvis: sus scripts tienen que apuntar a la copia
-    grep -rlI "/opt/jarvis/venv" "$H/jarvis/venv/bin" "$H/jarvis/venv/pyvenv.cfg" 2>/dev/null \
-        | xargs -r sed -i "s#/opt/jarvis/venv#$H/jarvis/venv#g"
+    for E in venv venv_musica; do                         # los dos entornos (el de la música con IA, si está)
+        [ -d "$H/jarvis/$E" ] || continue
+        grep -rlI "/opt/jarvis/$E" "$H/jarvis/$E/bin" "$H/jarvis/$E/pyvenv.cfg" 2>/dev/null \
+            | xargs -r sed -i "s#/opt/jarvis/$E#$H/jarvis/$E#g"
+    done
     chown -R "$USUARIO:$USUARIO" "$H"
     sudo -u "$USUARIO" env NOMBRE_P="$NOMBRE" JARVIS_DATOS="$H/jarvis" JARVIS_INSTALACION="$H/jarvis" \
         "$H/jarvis/venv/bin/python" -c "import os, sys; sys.path.insert(0, '$H/jarvis/core-orchestrator'); import perfil; perfil.guardar(usuario={'nombre': os.environ['NOMBRE_P']})" >/dev/null 2>&1 || true
