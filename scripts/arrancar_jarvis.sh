@@ -41,12 +41,24 @@ if [ "${JARVIS_MUSICA:-1}" != "0" ] && [ -n "$BOOT_ID" ] && [ "$(cat "$MARCA" 2>
 fi
 
 # ---- motor de voz (solo uno a la vez)
+MOTOR_PID=""
 if pgrep -xf "python core-orchestrator/jarvis.py" >/dev/null; then   # coincidencia exacta: no confundirse con otros comandos
     echo "Jarvis ya estaba en marcha."
 else
     ( cd "$J" && source venv/bin/activate && exec nice -n 10 python core-orchestrator/jarvis.py ) >>"$LOG" 2>&1 &
+    MOTOR_PID=$!
     echo "Jarvis arrancado. Registro: $LOG"
 fi
+
+# Si el motor se cae al empezar (procesador demasiado antiguo, falta algo del entorno…), la configuración
+# se abre igualmente en modo rescate y se avisa en pantalla de qué ha pasado.
+rescate() {
+    local motivo="$1"
+    echo "[$(date +%H:%M:%S)] el motor no arranca: $motivo. Abro la configuración en modo rescate." >>"$LOG"
+    ( cd "$M" && JARVIS_RESCATE="$motivo" exec "$PY" asistente.py --sin-abrir ) >>"$DATOS/logs/asistente.log" 2>&1 &
+    command -v notify-send >/dev/null && [ -n "$DISPLAY" ] && \
+        notify-send -u critical -i dialog-warning "El asistente no ha podido arrancar" "$motivo" 2>/dev/null
+}
 
 # Sin pantalla (por ejemplo, por SSH) no abrimos navegador.
 [ -z "$DISPLAY" ] && exit 0
@@ -75,9 +87,18 @@ else
     echo "Una sola pantalla (${INTERFAZ:-?}): la interfaz va a pantalla completa y las ventanas se abren encima."
 fi
 
-# ---- esperar a que la interfaz responda (hasta 60 s)
-for _ in $(seq 1 60); do
+# ---- esperar a que la interfaz responda: mientras el motor siga vivo (en un PC lento, la primera vez tarda)
+for _ in $(seq 1 240); do
     python3 -c "import urllib.request; urllib.request.urlopen('$URL', timeout=1)" 2>/dev/null && break
+    if [ -n "$MOTOR_PID" ] && ! kill -0 "$MOTOR_PID" 2>/dev/null; then
+        wait "$MOTOR_PID"; RC=$?
+        if [ "$RC" = 132 ] || tail -n 5 "$LOG" | grep -qiE "ilegal|illegal"; then
+            rescate "El procesador de este PC no tiene las instrucciones que necesita el reconocimiento de voz (SSE4.2/AVX). Puedes configurarlo, pero no podrá escucharte en este equipo."
+        else
+            rescate "El motor se ha cerrado al empezar (código $RC). Detalles en $LOG"
+        fi
+        MOTOR_PID=""
+    fi
     sleep 1
 done
 

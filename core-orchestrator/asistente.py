@@ -189,6 +189,7 @@ class Asistente:
         return {
             "perfil": perfil.perfil(),
             "embebido": self.embebido,
+            "rescate": os.environ.get("JARVIS_RESCATE", ""),   # el motor no arranca en este PC: se avisa arriba
             "frases": {k: perfil.con_nombre(v) for k, v in FRASES_PASO.items()},
             "equipo": {"ram_gb": eq.ram_gb, "nucleos": eq.nucleos, "cpu": eq.cpu, "graficas": eq.graficas,
                        "portatil": eq.portatil, "disco_libre_gb": eq.disco_libre_gb},
@@ -386,6 +387,9 @@ class Asistente:
         while time.time() < fin:
             bruto += p.stdout.read(3200) or b""
         p.kill()
+        if not self.embebido and not _voz_local_funciona():
+            return {"ok": False, "mensaje": "El reconocimiento de voz local no funciona en este PC (procesador sin "
+                                            "SSE4.2/AVX o falta faster-whisper)."}
         try:
             import numpy as np
             from faster_whisper import WhisperModel
@@ -566,6 +570,23 @@ class Asistente:
 
 
 # ==================================================================== servidor propio (instalación nueva)
+_VOZ_LOCAL: list = []
+
+
+def _voz_local_funciona() -> bool:
+    """Prueba en un proceso aparte si numpy y faster-whisper cargan en este procesador: en uno sin SSE4.2/AVX
+    se caen con «instrucción ilegal», y eso tumbaría la configuración entera si se probara aquí dentro."""
+    if not _VOZ_LOCAL:
+        import sys
+        try:
+            r = subprocess.run([sys.executable, "-c", "import numpy, ctranslate2, faster_whisper"],
+                               capture_output=True, timeout=120)
+            _VOZ_LOCAL.append(r.returncode == 0)
+        except (OSError, subprocess.TimeoutExpired):
+            _VOZ_LOCAL.append(False)
+    return _VOZ_LOCAL[0]
+
+
 def servir(abrir: bool = True) -> None:
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from google_cuenta import CuentaGoogle

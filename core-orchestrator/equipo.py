@@ -24,6 +24,8 @@ class Equipo:
     nucleos: int = 1
     cpu: str = ""
     avx2: bool = False
+    avx: bool = True
+    sse42: bool = True
     graficas: list[str] = field(default_factory=list)
     controladores: list[str] = field(default_factory=list)
     nvidia: bool = False
@@ -48,6 +50,9 @@ def detectar() -> Equipo:
     m = re.search(r"model name\s*:\s*(.+)", info)
     e.cpu = m.group(1).strip() if m else ""
     e.avx2 = " avx2" in info
+    if "flags" in info:                         # sin /proc/cpuinfo legible no se puede saber: se da por bueno
+        e.avx = " avx" in info
+        e.sse42 = " sse4_2" in info
     if shutil.which("lspci"):
         try:
             salida = subprocess.run(["lspci", "-k"], capture_output=True, text=True, timeout=5).stdout
@@ -92,7 +97,11 @@ def recomendar(e: Equipo | None = None) -> dict:
     }
     if ram < 4:
         r["avisos"].append("Con menos de 4 GB de RAM irá justo: mejor sin IA local y con el cerebro en la nube.")
-    if not e.avx2:
+    r["voz_local"] = e.sse42 and e.avx
+    if not r["voz_local"]:
+        r["avisos"].append("El procesador es muy antiguo (sin SSE4.2/AVX): el reconocimiento de voz local no funciona "
+                           "en este PC. Se puede configurar, pero no podrá escucharte.")
+    elif not e.avx2:
         r["avisos"].append("El procesador no tiene AVX2: el reconocimiento de voz local irá más lento.")
     if e.disco_libre_gb and e.disco_libre_gb < 15:
         r["avisos"].append(f"Solo quedan {e.disco_libre_gb} GB libres: las voces y modelos ocupan varios GB.")
@@ -104,7 +113,8 @@ def recomendar(e: Equipo | None = None) -> dict:
 def shell(e: Equipo | None = None) -> str:
     e = e or detectar()
     v = {"SIN_ACELERACION": "1" if sin_aceleracion(e) else "0", "RAM_GB": str(e.ram_gb), "NUCLEOS": str(e.nucleos),
-         "GRAFICA": "; ".join(e.graficas), "PORTATIL": "1" if e.portatil else "0"}
+         "GRAFICA": "; ".join(e.graficas), "PORTATIL": "1" if e.portatil else "0",
+         "VOZ_LOCAL": "1" if (e.sse42 and e.avx) else "0"}
     return "\n".join(f"{k}={shlex.quote(x)}" for k, x in v.items())
 
 

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Preferencias del navegador del asistente:
-#  - siempre: que YouTube y TikTok suenen solos cuando el asistente los abre;
+#  - siempre: que YouTube y TikTok suenen solos cuando el asistente los abre, y sin pantallas de bienvenida ni
+#    avisos de Firefox que tapen la interfaz (ni «restaurar sesión» tras un apagón);
 #  - solo si la gráfica lo necesita (AMD antiguas con el controlador «radeon», como la ARUBA del primer portátil, que
 #    se cuelgan cuando Firefox dibuja con ellas): dibujar con el procesador. Lo detecta core-orchestrator/equipo.py.
 J="${JARVIS_INSTALACION:-$HOME/jarvis}"
@@ -9,7 +10,17 @@ PY="$J/venv/bin/python"; [ -x "$PY" ] || PY=python3
 SIN_ACELERACION="${JARVIS_SIN_ACELERACION:-}"
 [ -z "$SIN_ACELERACION" ] && eval "$(cd "$M" && "$PY" equipo.py --shell 2>/dev/null)"
 PREFS='user_pref("media.autoplay.default", 0);
-user_pref("media.autoplay.blocking_policy", 0);'
+user_pref("media.autoplay.blocking_policy", 0);
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("trailhead.firstrun.didSeeAboutWelcome", true);
+user_pref("browser.startup.homepage_override.mstone", "ignore");
+user_pref("startup.homepage_welcome_url", "");
+user_pref("startup.homepage_welcome_url.additional", "");
+user_pref("browser.shell.checkDefaultBrowser", false);
+user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
+user_pref("termsofuse.bypassNotification", true);
+user_pref("browser.sessionstore.resume_from_crash", false);
+user_pref("browser.tabs.warnOnClose", false);'
 if [ "$SIN_ACELERACION" = "1" ]; then
 PREFS="$PREFS"'
 user_pref("gfx.webrender.software", true);

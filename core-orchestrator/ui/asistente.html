@@ -346,7 +346,9 @@ function pintar(conVoz = true) {
   const lista = $("#pasos"); lista.textContent = "";
   PASOS.forEach(([pid, t], i) => lista.append(el("li", { class: (i === paso ? "actual " : "") + (visitados.has(i) ? "hecho" : ""),
     on: { click: () => { paso = i; visitados.add(i); pintar(); } } }, t)));
-  const c = $("#contenido"); const scroll = window.scrollY; c.textContent = ""; c.append(...VISTAS[id]());
+  const c = $("#contenido"); const scroll = window.scrollY; c.textContent = "";
+  if (E.rescate) c.append(el("div", { class: "tarjeta" }, el("p", { class: "msg mal" }, "⚠ " + E.rescate)));
+  c.append(...VISTAS[id]());
   if (!conVoz) window.scrollTo(0, scroll);
   $("#atras").disabled = paso === 0; $("#siguiente").style.visibility = paso === PASOS.length - 1 ? "hidden" : "visible";
   if (conVoz) hablar(E.frases[id] || "");
