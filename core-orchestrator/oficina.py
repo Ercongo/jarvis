@@ -370,6 +370,15 @@ def estadisticas(filas: list[list]) -> str:
             partes.append(f"columna «{nombre}»: suma {hablar_numero(sum(nums))}, media "
                           f"{hablar_numero(sum(nums) / len(nums))}, mínimo {hablar_numero(min(nums))}, "
                           f"máximo {hablar_numero(max(nums))}")
+    # importe total = cantidad × precio, si la hoja no tiene ya una columna de total o importe
+    nc = [normalizar(c) for c in cab]
+    i_cant = next((i for i, c in enumerate(nc) if re.search(r"cantidad|unidades|uds|kilos|kg", c)), None)
+    i_prec = next((i for i, c in enumerate(nc) if re.search(r"precio|coste|importe unitario|pvp", c)), None)
+    if i_cant is not None and i_prec is not None and not any(re.search(r"total|importe$|subtotal", c) for c in nc):
+        importe = sum(f[i_cant] * f[i_prec] for f in datos
+                      if max(i_cant, i_prec) < len(f) and es_numero(f[i_cant]) and es_numero(f[i_prec]))
+        partes.append(f"importe total (cantidad × precio, la cuenta que suele querer la persona): "
+                      f"{hablar_numero(importe)}")
     return "; ".join(partes)
 
 

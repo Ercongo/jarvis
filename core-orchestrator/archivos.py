@@ -93,6 +93,9 @@ def sin_pisar(ruta: Path) -> Path:
 def buscar_en_casa(texto: str, carpetas: bool | None = None, extensiones: tuple[str, ...] = (),
                    maximo: int = 8) -> list[Path]:
     """Busca en tu carpeta personal ahora mismo (sin índice: encuentra también lo recién creado)."""
+    # «compras prueba.xlsx»: la extensión no está en el nombre del archivo (stem) y hacía que no lo encontrara
+    texto = re.sub(r"(?i)\.(xlsx|xlsm|xls|ods|csv|docx|doc|odt|rtf|pdf|pptx|ppt|odp|dxf|dwg|txt|md|jpe?g|png|webp|gif|"
+                   r"mp4|mkv|avi|mov|webm|mp3|wav|ogg|flac|m4a)\b", "", texto)
     palabras = [w for w in re.split(r"[\s_\-.,]+", normalizar(texto)) if len(w) >= 2 and w not in
                 ("el", "la", "los", "las", "de", "del", "mi", "mis", "un", "una")]
     if not palabras:

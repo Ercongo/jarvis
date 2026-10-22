@@ -426,7 +426,7 @@ RE_BUSCAR_ARCHIVO = re.compile(r"^(busca|buscame|buscar|encuentra|encuentrame|lo
                                r"documento|documentos|carpeta|carpetas)\s+(que se llama |llamado |llamada |de |con )?"
                                r"(.+)$")
 RE_RESUMIR = re.compile(r"^(resume|resumeme|leeme|lee|de que va|que dice)\s+(el |la |mi )?(archivo|documento|"
-                        r"fichero|pdf)\s+(que se llama |llamado |llamada |de )?(.+)$")
+                        r"fichero|pdf|word|texto)\s+(que se llama |llamado |llamada |de )?(.+)$")
 RE_WEB = re.compile(r"^(busca|buscame|buscar|investiga|mira|consulta)\s+(en )?(internet|google|la web|online|"
                     r"en internet)\s*(sobre|acerca de|que|informacion de|informacion sobre)?\s*(.+)$"
                     r"|^(busca|buscame) informacion (sobre|de|acerca de)\s+(.+)$")
@@ -654,6 +654,9 @@ class Herramientas:
         m = RE_RESUMIR.match(t)
         if m:
             encontrados = [p for p in buscar_archivos(m.group(5)) if p.is_file()]
+            if not encontrados:                                  # lo recién creado aún no está en el índice
+                from archivos import buscar_en_casa
+                encontrados = [p for p in buscar_en_casa(m.group(5), carpetas=False) if p.is_file()]
             if not encontrados:
                 return Resultado(f"No encuentro ningún archivo llamado {m.group(5)}.")
             ruta = encontrados[0]

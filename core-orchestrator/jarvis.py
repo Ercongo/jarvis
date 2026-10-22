@@ -139,18 +139,28 @@ def _ordenes_fijas() -> list[str]:
         trozo = re.sub(r"^[A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜ ]{1,24}:\s*", "", trozo.strip())
         if trozo and not re.search(r"[<\[/(]", trozo) and len(trozo.split()) >= 2:
             fijas.append(normalizar(trozo))
+    fijas = [f for f in fijas if f != "que sabes de mi"]     # esa la cuenta mejor el cerebro, que resume la memoria
     return fijas + ["abre la terminal", "abre terminal", "cierra la terminal", "abre la configuracion",
                     "que hora es", "que dia es hoy", "no me molestes", "sube el volumen", "baja el volumen"]
 
 
 def es_orden_fija(texto: str) -> bool:
     t = normalizar(texto).strip(" .?¿!¡")
-    if not t or len(t) > 60:
+    if not t:
+        return False
+    # lo que trabaja con sus archivos de oficina: las reglas de oficina son exactas (abren, suman y añaden de
+    # verdad); el cerebro de reserva contestaba «no tengo el contenido» o se inventaba la suma
+    if re.search(r"\b(excel|hoja de calculo|word|pdf|plano|presentacion|powerpoint)\b", t):
+        return True
+    if len(t) > 60:
         return False
     return any(t == f or difflib.SequenceMatcher(None, t, f).ratio() >= 0.93 for f in ORDENES_FIJAS)
 
 
 ORDENES_FIJAS = _ordenes_fijas()
+VERBOS_ORDEN = (r"(abre|cierra|anade|crea|pon|busca|haz|hazme|dime|manda|mandame|borra|mueve|copia|renombra|convierte|"
+                r"describe|dibuja|une|extrae|resume|sube|baja|reproduce|ensename|escribe|contesta|investiga|lee|leeme|"
+                r"apaga|reinicia|activa|desactiva|instala|desinstala|que|cuanto|cuanta|cuantos|donde)\b")
 
 
 SISTEMA = (
@@ -1404,7 +1414,9 @@ class Jarvis:
                     # el modelo a veces copia la etiqueta de la lista de órdenes («PC: abre terminal»)
                     orden = re.sub(r"^\s*[A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜ ]{1,24}:\s*", "", str(a["texto"])).strip()
                     partes = [x.strip() for x in orden.split(";") if x.strip()]
-                    if len(partes) > 1:                  # varias órdenes juntas: «abre el excel X; añade al excel X: …»
+                    if len(partes) > 1 and all(re.match(VERBOS_ORDEN, normalizar(x)) for x in partes):
+                        # varias órdenes juntas («abre el excel X; añade al excel X: …»), pero no si el «;» separa
+                        # los datos de una sola («añade al excel X: pan, 2; leche, 6»)
                         r = self._varias(partes, 2)
                     else:
                         r = self.procesar(orden, profundidad=2)
