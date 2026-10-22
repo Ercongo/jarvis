@@ -61,6 +61,7 @@ from nex import Nex
 from ultimos import Ultimos, apuntar
 from instalar import Instalar
 from medios import Medios
+from movil import Movil
 from molestar import NoMolestar
 from estudio import Estudio, guardar_clave as guardar_clave_estudio, comprobar_clave
 from google_cuenta import CuentaGoogle, extraer_cliente
@@ -123,7 +124,7 @@ ORDENES_CONOCIDAS = (
     "reproduce/abre/enséñame/mándame la canción/el vídeo/la foto/la imagen/el documento que has creado; "
     "cuando tengas la canción, reprodúcela. "
     "PROGRAMAS: instala <programa> (o el AppImage/deb que está en Descargas); qué programas me has instalado; "
-    "desinstala <programa>. CONFIGURACIÓN: abre la configuración (cambiar nombre, voz, color, pantallas, cuentas). MODO: no me molestes [hasta las <hora>]; ya puedes hablar. "
+    "desinstala <programa>. MÓVIL: dónde está mi móvil; cuánta batería tiene el móvil; manda la foto/el archivo al móvil; manda un sms a <persona>: <texto>; qué avisos tengo en el móvil; léeme los whatsapps; contesta a <persona>: <texto>; escribe a <persona> por whatsapp: <texto>. CONFIGURACIÓN: abre la configuración (cambiar nombre, voz, color, pantallas, cuentas). MODO: no me molestes [hasta las <hora>]; ya puedes hablar. "
     "SABER: investiga [a fondo] sobre <tema>; qué has investigado; olvida lo que investigaste de <tema>; aprende mis "
     "documentos; qué dicen mis documentos sobre <tema>; mantenme informado sobre <tema>; deja de seguir <tema>; "
     "qué hay de nuevo de mis temas; qué sabes de mí; olvida que <dato>. "
@@ -618,9 +619,17 @@ def ollama(ruta: str, cuerpo: dict | None = None, timeout: int = 10) -> dict:
         return json.load(r)
 
 
-def esperar_ollama(ui: Interfaz) -> None:
-    """Al arrancar el ordenador Ollama tarda en estar listo: esperamos en vez de fallar."""
-    for intento in range(60):
+IA_LOCAL = [False]       # ¿hay IA local (Ollama con su modelo)? Es opcional: sin ella se usa el cerebro en la nube
+
+
+def esperar_ollama(ui: Interfaz) -> bool:
+    """La IA local es de reserva y opcional. Si Ollama está instalado, al encender tarda en estar listo: se espera
+    un poco; si no está (un PC nuevo, el disco portátil), se sigue sin ella."""
+    if not shutil.which("ollama"):
+        log("IA local: Ollama no está instalado; uso solo el cerebro en la nube (se puede instalar con "
+            "instalar.sh --con-ollama)")
+        return False
+    for intento in range(30):
         try:
             modelos = {m["name"] for m in ollama("/api/tags")["models"]}
             break
@@ -630,11 +639,13 @@ def esperar_ollama(ui: Interfaz) -> None:
                 ui.poner_estado("arrancando", "Esperando al motor de IA")
             time.sleep(2)
     else:
-        ui.poner_estado("error", "Ollama no responde")
-        sys.exit("Ollama no responde. Arráncalo con: sudo systemctl start ollama")
+        log("IA local: Ollama no responde; sigo sin ella")
+        return False
     if MODELO_LLM not in modelos and f"{MODELO_LLM}:latest" not in modelos:
-        ui.poner_estado("error", f"Falta el modelo {MODELO_LLM}")
-        sys.exit(f"Falta el modelo {MODELO_LLM}. Descárgalo con: ollama pull {MODELO_LLM}")
+        log(f"IA local: falta el modelo {MODELO_LLM} (ollama pull {MODELO_LLM}); sigo sin ella")
+        return False
+    IA_LOCAL[0] = True
+    return True
 
 
 def limpiar_respuesta(texto: str, max_frases: int = 4) -> str:
@@ -660,7 +671,13 @@ def preguntar_llm(historial: list[dict], max_tokens: int = 140, extra: str = "",
         "options": {"num_ctx": 2048, "temperature": temperatura, "top_p": 0.9, "repeat_penalty": 1.15,
                     "num_predict": max_tokens},
     }
-    texto = ollama("/api/chat", cuerpo, timeout=300)["message"]["content"]
+    if not IA_LOCAL[0]:
+        return ("Ahora mismo no puedo pensar esa respuesta: no tengo conexión con el cerebro en la nube y en este "
+                "equipo no hay IA local. Las órdenes normales sí funcionan.")
+    try:
+        texto = ollama("/api/chat", cuerpo, timeout=300)["message"]["content"]
+    except (urllib.error.URLError, OSError, KeyError, ValueError):
+        return "La IA local no me responde ahora mismo. Prueba en un momento."
     if re.search(r"ORDEN\s*:", texto):
         return texto.strip()
     texto = limpiar_respuesta(texto)
@@ -825,6 +842,10 @@ class Jarvis:
         self.instalar = Instalar(self.decir, self.confirmar, log, es_telegram=lambda: getattr(self._canal, "tg", False),
                                  avisar=self.tg.enviar)
         self.medios = Medios(log, es_telegram=lambda: getattr(self._canal, "tg", False), avisar=self.tg.enviar)
+        from ultimos import ultimo as ultimo_creado
+        self.movil = Movil(self.decir, log, memoria=leer_memoria, ultimo_archivo=lambda: ultimo_creado(),
+                           puede_hablar=self.molestar.permite, es_telegram=lambda: getattr(self._canal, "tg", False),
+                           confirmar=self.confirmar)
         self.nex = Nex(log, ui=self.ui, decir=self.decir, avisar=self.tg.enviar,
                        es_telegram=lambda: getattr(self._canal, "tg", False), preguntar=self.preguntar,
                        enviar_documento=self.tg.enviar_documento)
@@ -1305,7 +1326,12 @@ class Jarvis:
         if respuesta and any(textos) and "?" not in respuesta and len(respuesta) < 140 and re.match(
                 r"(?i)^(voy a|ahora mismo|enseguida|en seguida|vale|perfecto|de acuerdo|hecho|listo|claro|entendido|"
                 r"datos? guardados?|he guardado|informaci[oó]n (actualizada|guardada)|apuntado|anotado|buscando|"
-                r"me pongo|ahora te|ya est[aá])", respuesta):
+                r"me pongo|ahora te|ya est[aá]|te (abro|pongo|busco|ense[nñ]o|muestro|leo|mando|digo)|"
+                r"(abrir|pondr|buscar|har|mostrar|ense[nñ]ar|leer|mandar|enviar|reproducir|crear|apagar|"
+                r"reiniciar)[eé]\b|\w+r[eé]\b)", respuesta) or (
+                respuesta and any(textos) and "?" not in respuesta and len(respuesta) < 140 and
+                difflib.SequenceMatcher(None, normalizar(respuesta), normalizar(" ".join(t for t in textos if t))).ratio()
+                > 0.45):
             respuesta = ""                                  # el módulo ya lo ha dicho: no repetirlo
         if respuesta:
             textos.append(respuesta if tg else limpiar_respuesta(respuesta, 5))
@@ -1381,7 +1407,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.asistente, "asistente"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),
@@ -1489,10 +1515,13 @@ class Jarvis:
     def saludar(self) -> None:
         h = dt.datetime.now().hour
         saludo = "Buenos días" if 6 <= h < 14 else "Buenas tardes" if 14 <= h < 21 else "Buenas noches"
-        nombre = f", {USUARIO}" if USUARIO else ""
+        quien = (perfil.perfil().get("usuario") or {}).get("nombre") or USUARIO
+        nombre = f", {quien}" if quien else ""
         aviso = frase("aviso_voz") if not self.modo_texto else "Escríbeme cuando quieras."
-        # Mientras saluda, cargamos el modelo de IA en memoria para que la primera respuesta sea rápida.
-        threading.Thread(target=lambda: preguntar_llm([{"role": "user", "content": "hola"}], 1), daemon=True).start()
+        # Sin cerebro en la nube, se carga ya la IA local para que la primera respuesta sea rápida. Con él, la local
+        # es solo de reserva: no se precarga (ocupa 1,3 GB y la gráfica nada más encender).
+        if not self.cerebro.activo and IA_LOCAL[0]:
+            threading.Thread(target=lambda: preguntar_llm([{"role": "user", "content": "hola"}], 1), daemon=True).start()
         self.tg.arrancar()
         self.cerebro.al_cambiar()
         self.ui.enviar(tipo="google", estado=self.google.estado())
@@ -1503,6 +1532,13 @@ class Jarvis:
         if self._resumen_pendiente():
             self._dar_resumen_manana(saludo=False)
         self.tg.anunciar_codigo()
+        if not perfil.perfil().get("instalado"):         # PC o disco nuevos: la configuración se abre sola
+            try:
+                from herramientas import abrir_web
+                abrir_web("http://127.0.0.1:8765/asistente")
+                self.decir("Soy tu asistente nuevo. Te he abierto la configuración para dejarme a tu gusto.")
+            except Exception as e:
+                log(f"no he podido abrir la configuración: {e}")
         auditar("inicio", "sesion", llm=MODELO_LLM, modo="texto" if self.modo_texto else "voz")
 
     # ---------- bucles

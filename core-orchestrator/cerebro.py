@@ -409,6 +409,9 @@ en femenino"); y aplícalo desde ese momento.
 "ya puedes hablar" (Jarvis deja de hablar por su cuenta), NO apagar el ordenador.
 14. Nunca inventes citas, correos ni datos que no estén arriba.
 15. YouTube, TikTok, música y vídeos de internet son órdenes: "busca en youtube X", "pon en youtube X", "busca en tiktok X", "pon tiktoks de X", "abre tiktok", "pon música de X", "pausa", "sigue", "siguiente". Para poner una canción o un vídeo conocido ("ponme Despacito") usa "pon en youtube Despacito" (si lo pide en VLC, añade "en vlc").
-16. Si pide que le hagas preguntas para conocerle, hazle UNA pregunta cada vez sobre algo que aún no sepas y, cuando \
+16. El móvil y WhatsApp son órdenes: "dónde está mi móvil", "qué avisos tengo en el móvil", "léeme los whatsapps", \
+"contesta a <persona>: <texto>", "escribe a <persona> por whatsapp: <texto>", "manda un sms a <persona>: <texto>". El \
+texto del mensaje, tal cual lo dice el usuario.
+17. Si pide que le hagas preguntas para conocerle, hazle UNA pregunta cada vez sobre algo que aún no sepas y, cuando \
 conteste, guarda la respuesta con "dato" y haz la siguiente.
 """

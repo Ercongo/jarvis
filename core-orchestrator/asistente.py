@@ -207,9 +207,27 @@ class Asistente:
                 "google": {"cliente": bool(g.get("client_id")), "conectada": bool(g.get("refresh_token")),
                            "email": g.get("email", "")},
                 "github": {"token": bool(gh.get("token")), "usuario": gh.get("usuario", "")},
+                "movil": self._estado_movil(),
             },
             "microfono": bool(shutil.which("parec") or shutil.which("pw-record")),
         }
+
+    @staticmethod
+    def _estado_movil() -> dict:
+        try:
+            import movil
+            return {"instalado": movil.disponible(), "dispositivos": [d["nombre"] for d in movil.dispositivos()]}
+        except Exception:
+            return {"instalado": False, "dispositivos": []}
+
+    def p_movil_abrir(self, d: dict) -> dict:
+        """Abre KDE Connect en el PC para aceptar el emparejamiento."""
+        for cmd in (["kdeconnect-app"], ["kdeconnect-settings"], ["kdeconnect-indicator"]):
+            if shutil.which(cmd[0]):
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                return {"ok": True, "mensaje": "Abierto KDE Connect en el ordenador: busca ahí tu móvil y pulsa «Emparejar»."}
+        return {"ok": False, "mensaje": "KDE Connect no está instalado en este ordenador. Abre una terminal y escribe: "
+                                        "sudo apt install kdeconnect"}
 
     # ================================================================ perfil
     def p_perfil(self, d: dict) -> dict:

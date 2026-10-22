@@ -280,7 +280,18 @@ const VISTAS = {
         el("ol", { class: "guia" }, el("li", {}, "Crea un token en ", el("a", { href: "https://github.com/settings/personal-access-tokens/new", target: "_blank" }, "GitHub → tokens"), " con acceso solo a los repositorios que quieras."),
           el("li", {}, "Pégalo aquí.")),
         gh, el("div", {}, el("button", { on: { click: async () => { mensaje(mgh, await api("github", { token: gh.value })); gh.value = ""; recargar(); } } }, "Guardar")), mgh),
-      el("p", { class: "estado" }, "WhatsApp, el móvil (Android/iPhone), YouTube con tu cuenta y las redes sociales llegarán en la fase siguiente.")];
+      el("div", { class: "tarjeta" }, el("h2", {}, "Tu móvil (Android o iPhone) "), estado(c.movil.dispositivos.length > 0, c.movil.dispositivos.join(", ")),
+        el("p", { class: "estado" }, "Con él te leo los avisos del móvil (también los de WhatsApp) y puedes contestarlos, hacerlo sonar si no lo encuentras, mandarle fotos y archivos, y SMS (solo Android)."),
+        el("ol", { class: "guia" },
+          el("li", {}, "Instala KDE Connect en el móvil: ", el("a", { href: "https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp", target: "_blank" }, "Android"), " · ",
+            el("a", { href: "https://apps.apple.com/app/kde-connect/id1580245991", target: "_blank" }, "iPhone"), "."),
+          el("li", {}, "Ponlo en la misma wifi que este ordenador y ábrelo."),
+          el("li", {}, c.movil.instalado ? "Pulsa el botón de abajo y, en la ventana que sale, elige tu móvil y «Emparejar». Acepta también en el móvil."
+                                           : "En este ordenador falta KDE Connect: abre una terminal y escribe «sudo apt install kdeconnect»; luego vuelve aquí."),
+          el("li", {}, "En Android, dale permiso de «acceso a notificaciones» a KDE Connect para que pueda leerte los avisos.")),
+        el("div", {}, el("button", { disabled: !c.movil.instalado, on: { click: async e => { const m = e.target.parentNode.nextSibling; mensaje(m, await api("movil/abrir", {})); } } }, "Abrir KDE Connect"),
+          el("button", { on: { click: async () => { await recargar(); pintar(false); } } }, "Comprobar")), el("p", { class: "msg" })),
+      el("p", { class: "estado" }, "YouTube con tu cuenta y las redes sociales llegarán en la fase siguiente.")];
   },
   perfil() {
     const f = el("input", { type: "file", accept: ".jarvisperfil" }), pw = el("input", { type: "password", placeholder: "contraseña del perfil" }), m = el("p", { class: "msg" });
