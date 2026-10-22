@@ -74,7 +74,7 @@ def sin_aceleracion(e: Equipo | None = None) -> bool:
     """Gráficas AMD antiguas con el controlador «radeon» (anteriores a GCN, como la ARUBA del primer portátil):
     se cuelgan cuando el navegador dibuja con ellas."""
     e = e or detectar()
-    return "radeon" in e.controladores and "amdgpu" not in e.controladores
+    return "radeon" in e.controladores          # aunque haya otra gráfica (amdgpu): la radeon es la que pinta
 
 
 def recomendar(e: Equipo | None = None) -> dict:

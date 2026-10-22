@@ -39,7 +39,7 @@ DEFECTO: dict = {
     "activacion": [],                   # palabras extra para despertarlo (además del nombre)
     "genero": "masculino",              # cómo habla de sí mismo
     "idioma": "es-ES",                  # es-ES, es-MX, en-US…
-    "color": "#29d4ff",                 # color principal de la interfaz
+    "color": "#38e8ff",                 # color principal de la interfaz
     "voz": {"motor": "piper", "modelo": "", "hablante": None, "lentitud": None},
     "pantallas": {"interfaz": "auto"},  # "auto" o el nombre de la salida (HDMI-1, DP-2…) donde va la interfaz
     "usuario": {"nombre": "", "trato": ""},
