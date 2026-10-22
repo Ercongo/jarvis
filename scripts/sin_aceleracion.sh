@@ -25,3 +25,22 @@ for perfil in "$HOME/snap/firefox/common/jarvis-perfil" "$HOME"/snap/firefox/com
     [ -d "$perfil" ] || continue
     printf '%s\n' "$PREFS" > "$perfil/user.js"
 done
+
+# Toda la sesión gráfica sin 3D en esa gráfica: Firefox prueba la gráfica al abrirse (gfxtest) aunque tenga la
+# aceleración desactivada, y eso bastó para colgarla el 22 oct. Con LIBGL_ALWAYS_SOFTWARE todo se dibuja con el
+# procesador (llvmpipe). Lo lee la sesión de LightDM/Xsession al entrar (~/.xsessionrc).
+XS="$HOME/.xsessionrc"
+if [ "$SIN_ACELERACION" = "1" ]; then
+    if ! grep -q "JARVIS-SIN-ACELERACION" "$XS" 2>/dev/null; then
+        cat >> "$XS" <<'EOF2'
+# JARVIS-SIN-ACELERACION: la gráfica integrada (radeon) se cuelga con el 3D. Todo se dibuja con el procesador.
+export LIBGL_ALWAYS_SOFTWARE=1
+export MOZ_WEBRENDER=1
+export MOZ_X11_EGL=0
+# FIN-JARVIS-SIN-ACELERACION
+EOF2
+    fi
+elif [ -f "$XS" ] && grep -q "JARVIS-SIN-ACELERACION" "$XS"; then
+    sed -i '/# JARVIS-SIN-ACELERACION/,/# FIN-JARVIS-SIN-ACELERACION/d' "$XS"
+fi
+

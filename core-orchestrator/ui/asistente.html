@@ -158,7 +158,10 @@ const VISTAS = {
       const r = await guardar({ nombre: nombre.value }); nombre.value = r.perfil.nombre;
       aviso.textContent = r.aviso || ""; $("#marca").textContent = siglas(r.perfil.nombre);
     });
-    extra.addEventListener("change", () => guardar({ activacion: extra.value.split(",").map(s => s.trim()).filter(Boolean) }));
+    extra.addEventListener("change", async () => {
+      const r = await guardar({ activacion: extra.value.split(",").map(s => s.trim()).filter(Boolean) });
+      extra.value = (r.perfil.activacion || []).join(", "); aviso.textContent = r.aviso || "";
+    });
     const probar = el("button", { on: { click: async () => {
       probar.disabled = true; res.className = "msg"; res.textContent = `Di ahora «${E.perfil.nombre}, qué hora es»…`;
       const r = await api("activacion/probar", { segundos: 4 }); probar.disabled = false;

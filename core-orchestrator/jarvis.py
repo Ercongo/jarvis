@@ -793,7 +793,8 @@ class Jarvis:
         self.google.al_cambiar = self._google_cambia
         self.ui.google = self.google
         from asistente import Asistente
-        self.asistente = Asistente(log, embebido=True, google=self.google, reiniciar=reiniciar_asistente)
+        self.asistente = Asistente(log, embebido=True, google=self.google, reiniciar=reiniciar_asistente,
+                                   mientras_habla=self._sordo_durante)
         self.ui.asistente = self.asistente
         self.correo = Correo(self.google, self.decir, self.confirmar, log, ui=self.ui, cerebro=self.cerebro,
                              resumir=self.resumir, avisar=self.tg.enviar,
@@ -1109,6 +1110,17 @@ class Jarvis:
         return re.sub(r"[*#`]+", "", texto).strip()
 
     # ---------- salida
+    def _sordo_durante(self, segundos: float) -> None:
+        """Otra parte (la configuración) va a hablar por los altavoces: que el micrófono no lo tome por el usuario."""
+        if not self.mic:
+            return
+        self.mic.mudo.set()
+
+        def volver():
+            self.mic.vaciar()
+            self.mic.mudo.clear()
+        threading.Timer(segundos + 0.6, volver).start()
+
     def decir(self, texto: str, susurro: bool | None = None) -> None:
         texto = con_nombre(texto)                         # el asistente puede llamarse de otra forma
         if not getattr(self._canal, "respondiendo", False) and not self.molestar.permite(texto):

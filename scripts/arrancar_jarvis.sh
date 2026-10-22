@@ -26,6 +26,12 @@ if [ -n "$SES" ] && [ -r "/proc/$SES/environ" ]; then
     done < "/proc/$SES/environ"
 fi
 
+# ---- gráficas que se cuelgan con el 3D (radeon antiguas): nada de lo que abra el asistente la usa
+eval "$(cd "$M" && "$PY" equipo.py --shell 2>/dev/null)"
+if [ "$SIN_ACELERACION" = "1" ]; then
+    export LIBGL_ALWAYS_SOFTWARE=1 MOZ_WEBRENDER=1 MOZ_X11_EGL=0 JARVIS_SIN_ACELERACION=1
+fi
+
 # ---- música de arranque: una sola vez por encendido (no cada vez que se reinicia Jarvis)
 BOOT_ID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)
 MARCA="$HOME/.cache/jarvis_musica_boot"

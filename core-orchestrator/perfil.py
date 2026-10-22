@@ -131,7 +131,7 @@ def variantes(nombre_: str | None = None) -> list[str]:
         fuera.update(_JARVIS)
     for extra in perfil().get("activacion") or []:
         e = re.sub(r"[^a-zñ]", "", _sin_tildes(str(extra)))
-        if e:
+        if e and " " not in str(extra).strip():        # las de varias palabras se miran en separar_nombre
             fuera.add(e)
     return sorted(fuera)
 
@@ -144,6 +144,15 @@ VOCATIVOS = {"oye", "hola", "eh", "ey", "hey", "buenas", "bueno", "venga", "vale
 def separar_nombre(texto: str) -> tuple[bool, str]:
     """¿Empieza la frase llamando al asistente por su nombre? Devuelve (llamado, resto de la frase)."""
     palabras = texto.split()
+    # palabras extra de varias palabras ("cuerpo despierta"): la frase tiene que empezar por ellas
+    limpio = [re.sub(r"[^a-zñ]", "", _sin_tildes(p)) for p in palabras]
+    for extra in perfil().get("activacion") or []:
+        trozos = [t for t in (re.sub(r"[^a-zñ]", "", _sin_tildes(x)) for x in str(extra).split()) if t]
+        if len(trozos) > 1:
+            n = len(trozos)
+            for i in range(0, 3):                           # al principio o tras un saludo
+                if limpio[i:i + n] == trozos and all(q in VOCATIVOS for q in limpio[:i]):
+                    return True, " ".join(palabras[i + n:]).strip(" ,.;:¿?¡!")
     lista = variantes()
     largo = len(nombre())
     corte = 0.72 if largo >= 6 else 0.8 if largo >= 5 else 0.9   # nombres cortos: más exigente

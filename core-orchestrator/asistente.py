@@ -132,8 +132,10 @@ def _leer_secreto(nombre_: str) -> dict:
 
 class Asistente:
     def __init__(self, log=print, embebido: bool = False, reiniciar: Callable[[], None] | None = None,
-                 google=None, al_terminar: Callable[[], None] | None = None):
+                 google=None, al_terminar: Callable[[], None] | None = None,
+                 mientras_habla: Callable[[float], None] | None = None):
         self.log = log
+        self.mientras_habla = mientras_habla     # dentro del asistente: que no se oiga a sí mismo (segundos)
         self.embebido = embebido           # True: lo sirve el asistente ya en marcha (jarvis.py)
         self.reiniciar = reiniciar
         self.al_terminar = al_terminar
@@ -215,10 +217,24 @@ class Asistente:
         cambios = {k: v for k, v in d.items() if k in permitidos}
         if "nombre" in cambios:
             cambios["nombre"] = re.sub(r"\s+", " ", str(cambios["nombre"])).strip()[:24] or "Jarvis"
+        aviso_extra = ""
+        if "activacion" in cambios:
+            limpias = []
+            for x in cambios["activacion"] or []:
+                x = re.sub(r"[\"'«»“”‘’]", "", str(x)).strip().lower()
+                x = re.sub(r"\s+", " ", x)
+                if x and x not in limpias:
+                    limpias.append(x[:40])
+            cambios["activacion"] = limpias[:10]
+            comunes = [x for x in limpias if perfil._sin_tildes(x) in perfil.VOCATIVOS or
+                       perfil._sin_tildes(x) in ("si", "no", "vale", "gracias", "adios", "jarvis")]
+            if comunes:
+                aviso_extra = ("Ojo: " + ", ".join(f"«{c}»" for c in comunes) + " se dice a menudo; me despertaré cada "
+                               "vez que empieces una frase así.")
         if "color" in cambios and not re.fullmatch(r"#[0-9a-fA-F]{6}", str(cambios["color"])):
             return {"ok": False, "mensaje": "el color tiene que ser #rrggbb"}
         p = perfil.guardar(**cambios)
-        aviso = self._aviso_nombre(p["nombre"]) if "nombre" in cambios else ""
+        aviso = self._aviso_nombre(p["nombre"]) if "nombre" in cambios else aviso_extra
         return {"ok": True, "perfil": p, "aviso": aviso}
 
     @staticmethod
@@ -271,6 +287,12 @@ class Asistente:
                 voz.synthesize(texto, w, speaker_id=hablante, length_scale=lentitud)
         cmd = _reproductor()
         if cmd:
+            if self.mientras_habla:
+                try:
+                    with wave.open(str(destino), "rb") as w:
+                        self.mientras_habla(w.getnframes() / w.getframerate())
+                except (OSError, wave.Error):
+                    self.mientras_habla(8.0)
             subprocess.Popen(cmd + [str(destino)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             threading.Timer(60, lambda: destino.unlink(missing_ok=True)).start()
         return True
