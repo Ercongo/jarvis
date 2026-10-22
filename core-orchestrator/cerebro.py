@@ -309,7 +309,7 @@ class Cerebro:
             memoria=contexto.get("memoria") or "nada", calendario=contexto.get("calendario") or "vacío",
             correo=contexto.get("correo") or "no consultado ahora (para algo del correo usa las acciones de correo)",
             canal="Telegram (escrito)" if contexto.get("telegram") else "voz (se leerá en voz alta)",
-            saber=contexto.get("saber") or "nada relacionado")
+            saber=contexto.get("saber") or "nada relacionado", creados=contexto.get("creados") or "ninguno")
         previos = [{"role": h["role"], "content": str(h.get("content", ""))[:400]} for h in historial[-8:]]
         mensajes = [{"role": "system", "content": sistema}] + previos + [{"role": "user", "content": texto}]
         bruto = self.chat(mensajes, formato_json=True, max_tokens=700, temperatura=0.2)   # el cupo por minuto cuenta lo reservado
@@ -365,6 +365,7 @@ Lo que sabes del usuario: {memoria}
 Calendario (id|fecha|hora|texto): {calendario}
 Correo (id|remitente|asunto|fecha): {correo}
 Lo que has investigado o leído en sus documentos (úsalo si viene al caso y di de dónde sale): {saber}
+Últimos archivos que has creado (usa estos nombres EXACTOS en las órdenes): {creados}
 
 Devuelve SOLO JSON: {{"acciones": [...], "respuesta": "..."}}. Tipos de acción (no inventes otros):
 - {{"tipo":"evento","fecha":"AAAA-MM-DD","hora":"HH:MM"|null,"texto":"..."}} apuntar algo con fecha en el calendario.
@@ -418,4 +419,10 @@ en femenino"); y aplícalo desde ese momento.
 texto del mensaje, tal cual lo dice el usuario.
 17. Si pide que le hagas preguntas para conocerle, hazle UNA pregunta cada vez sobre algo que aún no sepas y, cuando \
 conteste, guarda la respuesta con "dato" y haz la siguiente.
+18. Lo que hay DENTRO de sus archivos (sumas, totales, datos de un Excel, lo que dice un Word o un PDF, medidas de un \
+plano) NUNCA lo calcules ni lo supongas: orden "<pregunta> del excel <nombre>", "resume el word <nombre>", "describe \
+el plano <nombre>". Para el nombre usa la lista de últimos archivos creados.
+19. Respeta el verbo: "busca en youtube X" es buscar (no "pon"); "abre X" es abrir. Noticias, tiempo, precios o \
+resultados NUNCA te los inventes: son órdenes ("dime las noticias", "qué tiempo hace", "busca en internet …").
+20. Con acciones, deja "respuesta" vacía: el módulo dirá lo que ha hecho de verdad (nombre del archivo, resultado).
 """

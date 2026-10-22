@@ -430,7 +430,6 @@ class Creativo:
 
     # ---------- utilidades
     @property
-    @property
     def estudio(self):
         return self._estudio
 

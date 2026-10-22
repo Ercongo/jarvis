@@ -798,14 +798,15 @@ INSTR_EXCEL = """Diseñas hojas de cálculo para Jarvis. Hoy es {hoy}. Devuelve 
 Tipos de columna: texto, numero, entero, euros, porcentaje (0.21 = 21 %), fecha (AAAA-MM-DD), hora.
 Una columna calculada lleva "formula" con los nombres de otras columnas entre corchetes, p. ej. \
 {{"nombre": "Total", "tipo": "euros", "formula": "[Cantidad]*[Precio]"}} (sus celdas en "filas" van vacías: null).
-Reglas: usa exactamente los datos y columnas que diga el usuario. Si pide una plantilla o un control (gastos, \
-inventario, horarios…) sin datos, pon columnas útiles y 0 filas, salvo que el contenido sea conocido (tabla de \
+Reglas: usa exactamente los datos y columnas que diga el usuario. Si solo nombra columnas ("con concepto, cantidad y \
+precio") o pide una plantilla o un control (gastos, inventario, horarios…) sin datos, "filas": [] (NUNCA inventes \
+filas de ejemplo): pon columnas útiles y 0 filas, salvo que el contenido sea conocido (tabla de \
 multiplicar, días del mes, provincias, un presupuesto de ejemplo que pida…), que sí rellenas. "total": true solo si \
 sumar las columnas numéricas tiene sentido. Nombres en español de España, sin abreviaturas raras."""
 
 INSTR_FILAS = """Añades filas a una hoja de cálculo. Columnas: {cab}. Últimas filas (para imitar el formato): {ultimas}.
 Hoy es {hoy}. Convierte lo que dice el usuario en filas (una por cada cosa). Fechas AAAA-MM-DD ("hoy", "ayer" → \
-la fecha real). Números sin símbolos ni unidades (20 euros → 20). Si hay columna de cantidad o unidades y no se \
+la fecha real). Números sin símbolos ni unidades (20 euros → 20; "1.20" es uno con veinte). Si hay columna de cantidad o unidades y no se \
 dice, pon 1. Deja null lo que no se sepa y las columnas calculadas o de total. Devuelve SOLO JSON: {{"filas": [[...], ...]}} con tantos valores como columnas, en orden."""
 
 INSTR_PPTX = """Preparas presentaciones para Jarvis en español de España. Devuelve SOLO JSON:
@@ -859,6 +860,7 @@ class Oficina:
         self.avisar = avisar or (lambda t: None)
         self.camara = camara
         self.vision = vision
+        self._creando = 0                  # trabajos en segundo plano (hojas, presentaciones, planos…)
         self.redactar = redactar
         self._pendiente: dict | None = None
         self.ultimo: Path | None = None                    # el último archivo con el que hemos trabajado
@@ -902,12 +904,15 @@ class Oficina:
             except Exception as e:
                 self.log(f"oficina: error {e!r}")
                 texto, archivo = f"No he podido terminarlo ({type(e).__name__}). Prueba otra vez.", None
+            finally:
+                self._creando -= 1
             if archivo and not tg:
                 self.abrir_ruta(archivo, silencioso=True)
             self._contar(texto, tg, archivo)
             if archivo:
                 from ultimos import apuntar
                 apuntar(archivo, abierto=not tg)
+        self._creando += 1
         threading.Thread(target=hilo, daemon=True).start()
         return Respuesta(aviso)
 
@@ -924,6 +929,14 @@ class Oficina:
         return Respuesta(texto)
 
     def _uno(self, rutas: list[Path], nombre: str, accion: str, **datos) -> Path | Respuesta:
+        if not rutas and self._creando:
+            # «crea un excel de compras» y enseguida «añade al excel compras…»: todavía se está haciendo; se espera
+            self.log(f"oficina: espero a que termine lo que estoy creando para buscar «{nombre}»")
+            fin = time.time() + 120
+            while self._creando and time.time() < fin:
+                time.sleep(1)
+            extensiones = tuple({e for grupo in EXT.values() for e in grupo})
+            rutas = [p for p in buscar_en_casa(nombre, carpetas=False, extensiones=extensiones) if p.is_file()]
         if not rutas:
             return Respuesta(f"No encuentro ningún archivo que se llame {nombre}.")
         exactas = [p for p in rutas if normalizar(p.stem) == normalizar(nombre)]
@@ -1008,6 +1021,8 @@ class Oficina:
         cab = [str(c) for c in hojas[0][1][0]] if hojas and hojas[0][1] else []
         if not cab:
             return Respuesta(f"{ruta.name} no tiene cabeceras: no sé en qué columnas poner cada cosa.")
+        # «1,20» (coma decimal española, sin espacio) es un solo número: así no se parte en «1» y «20»
+        datos = re.sub(r"(?<=\d),(?=\d)", ".", datos)
         if self.ia:
             ultimas = [f for f in hojas[0][1][1:] if f and str(f[0]).upper() != "TOTAL"][-3:]
             spec = self._ia_json(INSTR_FILAS.format(cab=json.dumps(cab, ensure_ascii=False), hoy=dt.date.today(),

@@ -57,7 +57,11 @@ fi
 
 # lo demás que usa el asistente en el portátil original: vídeo y música (VLC), planos (LibreCAD y LibreDWG para
 # leer DWG), capturas, monitor del sistema, portapapeles y dibujo de LibreOffice
-instalar vlc librecad flameshot btop xsel libreoffice-draw
+instalar vlc librecad flameshot btop xsel libreoffice-draw gnome-calculator
+# LibreCAD sin su ventana de bienvenida (sale encima de todo al convertir un plano) y en español, en metros
+mkdir -p /etc/skel/.config/LibreCAD
+printf '[Appearance]\nLanguage=es\nLanguageCmd=es\n\n[Defaults]\nUnit=Meter\n\n[Startup]\nFirstLoad=0\n' \
+    > /etc/skel/.config/LibreCAD/LibreCAD.conf
 apt-get install -y --no-install-recommends libredwg-tools || apt-get install -y --no-install-recommends libredwg-utils \
     || echo libredwg >> /var/log/paquetes_omitidos.txt
 

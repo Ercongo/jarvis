@@ -132,6 +132,27 @@ ORDENES_CONOCIDAS = (
     "NEX: encarga a Nex <tarea de varios pasos>; cuánto llevo gastado en Nex."
 )
 
+def _ordenes_fijas() -> list[str]:
+    """Las órdenes de la lista que no llevan nada variable («dónde está mi móvil», «haz una captura»…)."""
+    fijas = []
+    for trozo in re.split(r"[;.]\s*", ORDENES_CONOCIDAS):
+        trozo = re.sub(r"^[A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜ ]{1,24}:\s*", "", trozo.strip())
+        if trozo and not re.search(r"[<\[/(]", trozo) and len(trozo.split()) >= 2:
+            fijas.append(normalizar(trozo))
+    return fijas + ["abre la terminal", "abre terminal", "cierra la terminal", "abre la configuracion",
+                    "que hora es", "que dia es hoy", "no me molestes", "sube el volumen", "baja el volumen"]
+
+
+def es_orden_fija(texto: str) -> bool:
+    t = normalizar(texto).strip(" .?¿!¡")
+    if not t or len(t) > 60:
+        return False
+    return any(t == f or difflib.SequenceMatcher(None, t, f).ratio() >= 0.93 for f in ORDENES_FIJAS)
+
+
+ORDENES_FIJAS = _ordenes_fijas()
+
+
 SISTEMA = (
     "Eres Jarvis, el asistente personal del usuario, con el estilo del mayordomo digital de Iron Man: educado, "
     "cercano, resolutivo y con un punto de humor. Funcionas en local en un portátil con Ubuntu. "
@@ -1204,9 +1225,9 @@ class Jarvis:
         try:
             frases = [f for f in re.split(r"(?<=[.!?;:])\s+", texto) if f.strip()]
             sonando = None
-            for i, frase in enumerate(frases):
+            for i, trozo in enumerate(frases):
                 wav = TMP / f"frase_{i % 2}.wav"
-                self.voz.sintetizar(frase, wav)
+                self.voz.sintetizar(trozo, wav)
                 if susurro:
                     bajar_volumen_wav(wav, VOLUMEN_SUSURRO)
                 env = envolvente(wav)
@@ -1274,6 +1295,15 @@ class Jarvis:
                 self.saber.observar(entrada)            # ¿cuenta algo de sí mismo que convenga recordar?
             except Exception as e:
                 log(f"error en saber: {e!r}")
+        if profundidad < 2 and self.cerebro.activo and es_orden_fija(entrada):
+            # una orden fija de la lista («dónde está mi móvil», «qué herramientas de creación tienes»): directa al
+            # módulo que la sabe hacer. Más fiable que el cerebro (un modelo de reserva la contestaba inventando)
+            # y no gasta cupo. Si ningún módulo la reconoce, decide el cerebro.
+            r = self._procesar_una(entrada, 2)
+            if r.get("origen") != "llm":
+                log(f"orden fija, sin cerebro: {entrada}")
+                r["texto"] = variar(r["texto"])
+                return r
         if profundidad < 2 and self.cerebro.activo:
             r = self._con_cerebro(entrada)
             if r is not None:
@@ -1309,6 +1339,11 @@ class Jarvis:
         tg = getattr(self._canal, "tg", False)
         contexto = {"ordenes": ORDENES_CONOCIDAS, "memoria": memoria_para_ia(), "calendario": self.cal.contexto_ia(),
                     "telegram": tg}
+        try:
+            from ultimos import contexto_ia as creados_ia
+            contexto["creados"] = creados_ia()
+        except Exception as e:
+            log(f"error en ultimos: {e!r}")
         try:
             contexto["saber"] = self.saber.contexto(entrada)
         except Exception as e:
@@ -1368,7 +1403,11 @@ class Jarvis:
                 elif tipo == "orden" and a.get("texto"):
                     # el modelo a veces copia la etiqueta de la lista de órdenes («PC: abre terminal»)
                     orden = re.sub(r"^\s*[A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜ ]{1,24}:\s*", "", str(a["texto"])).strip()
-                    r = self.procesar(orden, profundidad=2)
+                    partes = [x.strip() for x in orden.split(";") if x.strip()]
+                    if len(partes) > 1:                  # varias órdenes juntas: «abre el excel X; añade al excel X: …»
+                        r = self._varias(partes, 2)
+                    else:
+                        r = self.procesar(orden, profundidad=2)
                     no_sabe = lambda x: x.get("origen") == "llm"    # a profundidad 2 = «no lo sé hacer»
                     if no_sabe(r) and normalizar(orden) != normalizar(entrada):
                         r2 = self.procesar(entrada, profundidad=2)       # con tus palabras tal cual
@@ -1399,8 +1438,11 @@ class Jarvis:
                 difflib.SequenceMatcher(None, normalizar(respuesta), normalizar(" ".join(t for t in textos if t))).ratio()
                 > 0.45):
             respuesta = ""                                  # el módulo ya lo ha dicho: no repetirlo
-        if fallos and "?" not in respuesta:
-            respuesta = ""            # no decir «Terminal abierta» si la orden no ha salido
+        hubo_orden = any(isinstance(a, dict) and a.get("tipo") not in ("dato",) for a in plan.get("acciones", []))
+        if (fallos or (hubo_orden and any(textos))) and "?" not in respuesta:
+            # con acciones, quien sabe lo que se ha hecho es el módulo: el cerebro se inventaba nombres de archivo
+            # y resultados («He creado prueba.xlsx», «Listo, he creado el plano») antes de que existieran
+            respuesta = ""
         if respuesta:
             textos.append(respuesta if tg else limpiar_respuesta(respuesta, 5))
         texto = " ".join(dict.fromkeys(t for t in textos if t)).strip() or frase("no_entiendo")

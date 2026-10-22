@@ -190,7 +190,7 @@ class Resultado:
 ALIAS_APPS = {
     "navegador": ["firefox", "chromium", "google chrome"], "internet": ["firefox", "chromium"],
     "explorador": ["thunar", "archivos", "files"], "archivos": ["thunar", "archivos", "files"],
-    "gestor de archivos": ["thunar"], "terminal": ["terminal", "xfce4-terminal"], "consola": ["terminal"],
+    "gestor de archivos": ["thunar"], "terminal": ["terminal", "xfce4-terminal", "ptyxis"], "consola": ["terminal", "ptyxis"],
     "editor": ["mousepad", "geany", "gedit"], "bloc de notas": ["mousepad", "gedit"],
     "editor de texto": ["mousepad", "gedit"], "codigo": ["visual studio code", "code", "geany"],
     "visual studio": ["visual studio code", "code"], "vs code": ["visual studio code"],
@@ -254,7 +254,8 @@ class Aplicaciones:
                     return a
         for c in candidatos:                                    # 2) contiene la palabra
             for a in self.apps:
-                if any(len(c) >= 4 and (c in s or s in c) for s in a["busqueda"] if len(s) >= 4):
+                # «s in c» solo con nombres largos: si no, «calculadora» contiene «calc» y abría LibreOffice Calc
+                if any(len(c) >= 4 and (c in s or (len(s) >= 6 and s in c)) for s in a["busqueda"] if len(s) >= 4):
                     return a
         todos = {s: a for a in self.apps for s in a["busqueda"]}   # 3) parecido (whisper se equivoca)
         cerca = difflib.get_close_matches(q, list(todos), n=1, cutoff=0.7)
@@ -498,7 +499,8 @@ def nombre_carpeta_conocida(nombre: str) -> str | None:
 # =============================================================== ventanas
 
 DESTINOS_CERRAR = {
-    "terminal": ["terminal"], "consola": ["terminal"],
+    # Ubuntu 26.04 trae Ptyxis: su ventana no lleva la palabra «terminal»
+    "terminal": ["terminal", "ptyxis", "kgx", "konsole", "xterm"], "consola": ["terminal", "ptyxis", "kgx", "konsole"],
     "carpeta": ["thunar"], "carpetas": ["thunar"], "explorador": ["thunar"], "archivos": ["thunar"],
     "navegador": ["firefox", "chromium", "chrome"], "firefox": ["firefox"], "internet": ["firefox", "chromium"],
     "pagina": ["firefox", "chromium"], "paginas": ["firefox", "chromium"], "busqueda": ["firefox", "chromium"],
@@ -547,11 +549,17 @@ def cerrar_ventanas(objetivo: str) -> tuple[int, str]:
         except (OSError, subprocess.TimeoutExpired):
             return 0, "la ventana activa"
     else:
-        claves = []
+        grupos = []                                             # cada palabra, con sus equivalentes
         for w in palabras:
             cerca = difflib.get_close_matches(w, list(DESTINOS_CERRAR), n=1, cutoff=0.8)
-            claves += DESTINOS_CERRAR[cerca[0]] if cerca else [w]
-        elegidas = [v for v in abiertas if any(k in v["clase"] or k in normalizar(v["titulo"]) for k in claves)]
+            grupos.append(DESTINOS_CERRAR[cerca[0]] if cerca else [w])
+
+        def encaja(v: dict, claves: list[str]) -> bool:
+            return any(k in v["clase"] or k in normalizar(v["titulo"]) for k in claves)
+        # tienen que encajar TODAS las palabras: «cierra LibreOffice Calc» no cierra también el Impress
+        elegidas = [v for v in abiertas if all(encaja(v, g) for g in grupos)]
+        if not elegidas and len(grupos) > 1:                    # si con todas no hay ninguna, la más concreta
+            elegidas = [v for v in abiertas if encaja(v, grupos[-1])]
     for v in elegidas:
         subprocess.run(["wmctrl", "-i", "-c", v["id"]], timeout=3)
     return len(elegidas), clave or "todo"

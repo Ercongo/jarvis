@@ -94,6 +94,17 @@ def ultimo(tipo: str | None = None) -> Path | None:
     return None
 
 
+def contexto_ia(cuantos: int = 6) -> str:
+    """Los últimos archivos que ha hecho el asistente, con su nombre exacto: para que el cerebro no se lo invente
+    («prueba.xlsx» cuando se llama «Gastos prueba.xlsx»)."""
+    try:
+        datos = json.loads(CREADOS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    vistos = [d for d in reversed(datos) if Path(d.get("ruta", "")).exists()][:cuantos]
+    return "; ".join(f"{d.get('tipo')}: {Path(d['ruta']).name}" for d in vistos)
+
+
 class Ultimos:
     def __init__(self, decir: Callable[..., None], log=print, es_telegram: Callable[[], bool] | None = None,
                  enviar_documento=None, enviar_foto=None, avisar=None, trabajando: Callable[[], int] | None = None):
