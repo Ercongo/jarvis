@@ -64,7 +64,13 @@ fi
 parte() { if [ -e "${DESTINO}p$1" ]; then echo "${DESTINO}p$1"; else echo "${DESTINO}$1"; fi; }
 
 limpiar() {
+    local codigo=$?
     set +e
+    if [ "$codigo" != 0 ]; then
+        printf '\n\033[1;31m✖ Ha fallado (código %s). Las últimas líneas del registro:\033[0m\n' "$codigo" | tee -a "$LOG"
+        tail -n 12 "$LOG" | cut -c1-200
+        echo "Arreglado el problema, sigue con: sudo bash $0 --reanudar $DESTINO"
+    fi
     for d in dev/pts dev proc sys run boot/efi ""; do umount -l "$MONTAJE/$d" 2>/dev/null; done
     [ -n "$IMAGEN" ] && losetup -d "$DESTINO" 2>/dev/null
 }
@@ -92,11 +98,18 @@ if [ "$REANUDAR" = 1 ]; then
 else
 # ------------------------------------------------------------------ 2. particiones: BIOS + EFI + sistema
 paso "Particiones en $DESTINO"
-wipefs -a "$DESTINO" >>"$LOG"
-sgdisk --zap-all "$DESTINO" >>"$LOG"
+wipefs -a "$DESTINO" >>"$LOG" 2>&1 || true
+# borrar restos de tablas viejas (al principio y al final del disco); sgdisk da código de error si la tabla
+# vieja estaba dañada («CRC doesn't check out») aunque la borre bien: por eso se comprueba aparte
+SECTORES=$(blockdev --getsz "$DESTINO")
+dd if=/dev/zero of="$DESTINO" bs=1M count=4 conv=fsync status=none
+dd if=/dev/zero of="$DESTINO" bs=512 seek=$((SECTORES - 8192)) count=8192 conv=fsync status=none
+sgdisk --zap-all "$DESTINO" >>"$LOG" 2>&1 || true
+partprobe "$DESTINO" 2>/dev/null || true
 sgdisk -n1:1M:+1M -t1:EF02 -c1:"BIOS" \
        -n2:0:+512M -t2:EF00 -c2:"EFI" \
-       -n3:0:0 -t3:8300 -c3:"ASISTENTE" "$DESTINO" >>"$LOG"
+       -n3:0:0 -t3:8300 -c3:"ASISTENTE" "$DESTINO" >>"$LOG" 2>&1 \
+    || { echo "No he podido crear las particiones (mira $LOG)."; exit 1; }
 partprobe "$DESTINO" 2>/dev/null || true; udevadm settle 2>/dev/null || true; sleep 2
 P_EFI=$(parte 2); P_RAIZ=$(parte 3)
 mkfs.vfat -F32 -n EFI "$P_EFI" >>"$LOG"
