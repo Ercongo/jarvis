@@ -10,6 +10,8 @@
 # Al arrancar el disco por primera vez sale una pantalla que pide el nombre, el usuario y la contraseña de
 # la persona; luego entra en el escritorio y abre la configuración del asistente.
 set -euo pipefail
+# cualquier fallo, con su línea y la orden: nunca más un cierre en silencio
+trap 'echo "✖ Error en la línea $LINENO: $BASH_COMMAND" >&2' ERR
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DESTINO=""; IMAGEN=""; TAMANO="24G"; REANUDAR=0
@@ -57,7 +59,10 @@ else
         [ "$R" = "BORRAR" ] || { echo "Cancelado. No se ha tocado nada."; exit 1; }
     fi
     # desmontar lo que el escritorio haya montado (los nombres pueden llevar espacios: «Disco externo»)
-    lsblk -nlo MOUNTPOINT "$DESTINO" | grep -v '^$' | sort -r | while IFS= read -r m; do umount "$m" || umount -l "$m"; done
+    # (si no hay nada montado, grep no encuentra líneas y da error: con pipefail eso cerraba el script en silencio)
+    { lsblk -nlo MOUNTPOINT "$DESTINO" | grep -v '^$' || true; } | sort -r | while IFS= read -r m; do
+        umount "$m" || umount -l "$m" || true
+    done
     if lsblk -nlo MOUNTPOINT "$DESTINO" | grep -q .; then echo "No he podido desmontar $DESTINO. Ciérralo en el explorador y repite."; exit 1; fi
 fi
 [ "$REANUDAR" = 1 ] || : > "$LOG"
