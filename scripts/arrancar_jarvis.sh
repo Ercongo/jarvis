@@ -50,6 +50,11 @@ else
     echo "Jarvis arrancado. Registro: $LOG"
 fi
 
+# ---- disco portátil: OmniRoute viene preparado en /opt/omniroute; la primera vez se configura para esta persona
+if [ -d /opt/omniroute ] && [ ! -f "$DATOS/omniroute.json" ] && ! pgrep -f "bash .*instalar_omniroute" >/dev/null; then
+    setsid -f bash "$J/instalar_omniroute.sh" >"$DATOS/logs/omniroute.log" 2>&1
+fi
+
 # Si el motor se cae al empezar (procesador demasiado antiguo, falta algo del entorno…), la configuración
 # se abre igualmente en modo rescate y se avisa en pantalla de qué ha pasado.
 rescate() {

@@ -238,6 +238,18 @@ chroot "$MONTAJE" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin 
     else
         falta "ollama"
     fi
+    # OmniRoute (otras IA gratis cuando Groq se agota): Node 24 oficial comprobado + omniroute en /opt/omniroute.
+    # Cada persona lo configura al entrar (arrancar_jarvis.sh lanza instalar_omniroute.sh la primera vez).
+    T=$(mktemp -d); BASE=https://nodejs.org/dist/latest-v24.x
+    if curl -fsSL "$BASE/SHASUMS256.txt" -o $T/S && A=$(grep -oE "node-v[0-9.]+-linux-x64\.tar\.xz" $T/S | head -1) \
+       && curl -fsSL "$BASE/$A" -o $T/$A && (cd $T && grep " $A\$" S | sha256sum -c -) \
+       && mkdir -p /opt/omniroute && tar -xJf $T/$A -C /opt/omniroute --strip-components=1 \
+       && /opt/omniroute/bin/npm install -g --no-audit --no-fund omniroute@3.8.52 >/tmp/omni.log 2>&1; then
+        echo "  OmniRoute preparado en /opt/omniroute"
+    else
+        rm -rf /opt/omniroute; falta "omniroute"
+    fi
+    rm -rf $T
     # música con IA (MusicGen) en su propio entorno, como en el portátil original
     if python3 -m venv /opt/jarvis/venv_musica && \
        /opt/jarvis/venv_musica/bin/pip install -q torch --index-url https://download.pytorch.org/whl/cpu && \

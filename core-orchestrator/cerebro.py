@@ -81,6 +81,7 @@ class Cerebro:
         self._sin_red_hasta = 0.0
         self.al_cambiar = lambda: None                    # para el panel de la pantalla
         self.respaldo = None                              # Nex (OpenRouter): piensa si Groq no puede
+        self.omni = None                                  # OmniRoute (en este equipo): antes que Nex
         if self.clave:
             threading.Thread(target=self.detectar, daemon=True).start()
 
@@ -92,7 +93,7 @@ class Cerebro:
 
     @property
     def activo(self) -> bool:
-        return self.groq_activo or bool(self.respaldo and self.respaldo.activo)
+        return self.groq_activo or bool(self.omni and self.omni.activo) or bool(self.respaldo and self.respaldo.activo)
 
     @property
     def oido_activo(self) -> bool:
@@ -106,13 +107,17 @@ class Cerebro:
 
     def estado(self) -> str:
         nex = bool(self.respaldo and self.respaldo.activo)
+        omni = bool(self.omni and self.omni.activo)
         if not self.groq_activo:
+            if omni:
+                return "nube · omniroute (respaldo)"
             if nex:
                 return "nube · nex (respaldo)"
             if not self.clave:
                 return "local"
             return "local (sin conexión con Groq)" if not self.modelos_chat else "local (cupo o red)"
-        return "nube · " + self.modelos_chat[0].split("/")[-1] + (" + nex" if nex else "")
+        return "nube · " + self.modelos_chat[0].split("/")[-1] + (" + omniroute" if omni else "") + \
+            (" + nex" if nex else "")
 
     # ---------- HTTP
     def _peticion(self, ruta: str, datos: bytes | None = None, cabeceras: dict | None = None, timeout: float = 15):
@@ -216,11 +221,26 @@ class Cerebro:
         # las instrucciones fijas de los módulos dicen «Eres Jarvis»: con el nombre que tenga el asistente
         mensajes = [dict(m, content=con_nombre(m["content"])) if m.get("role") == "system" and
                     isinstance(m.get("content"), str) else m for m in mensajes]
+        omni = self.omni if (self.omni and self.omni.activo) else None
+        if omni and omni.preferido:                       # «usa OmniRoute para pensar»
+            try:
+                return omni.chat(mensajes, formato_json, max_tokens, temperatura, max(timeout, 60))
+            except Exception as e:
+                self.log(f"cerebro: OmniRoute no puede ({e}); pruebo con Groq")
+                omni = None
         try:
-            return self._chat_groq(mensajes, formato_json, max_tokens, temperatura, timeout, ligero)
+            return self._chat_groq(mensajes, formato_json, max_tokens, temperatura, timeout, ligero,
+                                   esperar=not omni)
         except SinConexion as e:
+            if omni:
+                self.log(f"cerebro: Groq no puede ({e}); pienso con OmniRoute")
+                try:
+                    return omni.chat(mensajes, formato_json, max_tokens, temperatura, max(timeout, 60))
+                except Exception as e2:
+                    self.log(f"cerebro: OmniRoute tampoco ({e2})")
+                    e = SinConexion(f"Groq y OmniRoute no disponibles: {e2}")
             if not (self.respaldo and self.respaldo.activo):
-                raise
+                raise e
             self.log(f"cerebro: Groq no puede ({e}); pienso con Nex")
             try:
                 m = self.respaldo.chat(mensajes, json_=formato_json, max_tokens=max(max_tokens, 1500),
@@ -230,7 +250,7 @@ class Cerebro:
             return re.sub(r"(?s)<think>.*?</think>", "", m.get("content") or "").strip()
 
     def _chat_groq(self, mensajes: list[dict], formato_json: bool, max_tokens: int, temperatura: float,
-                   timeout: float, ligero: bool = False) -> str:
+                   timeout: float, ligero: bool = False, esperar: bool = True) -> str:
         if not self.clave or not self.modelos_chat or time.time() < self._sin_red_hasta:
             raise SinConexion("cerebro en la nube no disponible")
         ultimo = "sin modelos"
@@ -242,7 +262,7 @@ class Cerebro:
             # todos cansados: si alguno se recupera en pocos segundos, mejor esperar que contestar mal en local
             m = min(orden, key=lambda x: self._pausa.get(x, 0))
             falta = self._pausa.get(m, 0) - time.time()
-            if falta <= 20:          # la IA local de reserva contesta mucho peor: mejor unos segundos de espera
+            if falta <= 20 and esperar:   # sin OmniRoute, la IA local contesta mucho peor: mejor esperar unos segundos
                 self.log(f"cerebro: todos los modelos sin cupo; espero {falta:.0f} s a {m}")
                 time.sleep(max(0.0, falta))
                 candidatos = [m]

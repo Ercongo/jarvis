@@ -129,7 +129,9 @@ ORDENES_CONOCIDAS = (
     "SABER: investiga [a fondo] sobre <tema>; qué has investigado; olvida lo que investigaste de <tema>; aprende mis "
     "documentos; qué dicen mis documentos sobre <tema>; mantenme informado sobre <tema>; deja de seguir <tema>; "
     "qué hay de nuevo de mis temas; qué sabes de mí; olvida que <dato>. "
-    "NEX: encarga a Nex <tarea de varios pasos>; cuánto llevo gastado en Nex."
+    "NEX: encarga a Nex <tarea de varios pasos>; cuánto llevo gastado en Nex. "
+    "OMNIROUTE (otras IA gratis cuando Groq se agota): estado de OmniRoute; prueba OmniRoute; usa OmniRoute para "
+    "pensar; arranca OmniRoute; para OmniRoute; conecta <Gemini, Cerebras, Mistral, NVIDIA…> a OmniRoute."
 )
 
 def _ordenes_fijas() -> list[str]:
@@ -150,7 +152,8 @@ def es_orden_fija(texto: str) -> bool:
         return False
     # lo que trabaja con sus archivos de oficina: las reglas de oficina son exactas (abren, suman y añaden de
     # verdad); el cerebro de reserva contestaba «no tengo el contenido» o se inventaba la suma
-    if re.search(r"\b(excel|hoja de calculo|word|pdf|plano|presentacion|powerpoint)\b", t):
+    if re.search(r"\b(excel|hoja de calculo|word|pdf|plano|presentacion|powerpoint|omni ?rout\w*|omniru\w*)\b", t) \
+            or re.search(r"\b(usa|piensa con) (a )?groq\b", t):
         return True
     if len(t) > 60:
         return False
@@ -920,6 +923,10 @@ class Jarvis:
         self.nex.ejecutar_orden = self._orden_de_nex
         self.nex.ordenes = ORDENES_CONOCIDAS
         self.cerebro.respaldo = self.nex                # si Groq se queda sin cupo, piensa Nex
+        from omniroute import OmniRoute
+        self.omni = OmniRoute(log, es_telegram=lambda: getattr(self._canal, "tg", False))
+        self.cerebro.omni = self.omni                   # …y antes que Nex, OmniRoute (si está instalado)
+        threading.Thread(target=self._preparar_omni, daemon=True).start()
         self.saber.nex = self.nex                       # las investigaciones a fondo las redacta Nex
         self._ultima_entrada: str | None = None
         self._ultima_charla = 0.0
@@ -1077,7 +1084,23 @@ class Jarvis:
                 log(f"oído nube no disponible ({e}); uso el local")
         return self.oido.transcribir(audio, silencioso=silencioso)
 
+    def _preparar_omni(self) -> None:
+        """Al arrancar: las claves que ya tiene el asistente también en OmniRoute, y su combinación al día."""
+        time.sleep(45)                                  # que OmniRoute termine de arrancar con la sesión
+        try:
+            if self.omni.activo:
+                self.omni.sincronizar_claves()
+                log("omniroute: listo como segundo cerebro")
+        except Exception as e:
+            log(f"omniroute: no he podido prepararlo: {e!r}")
+
     def _procesar_telegram(self, texto: str) -> dict:
+        try:
+            aviso = self.omni.recibir_clave(texto)       # «clave de gemini AIza…»: a OmniRoute, nunca al registro
+        except Exception as e:
+            aviso = f"No he podido conectarla: {type(e).__name__}"
+        if aviso:
+            return {"texto": aviso, "susurro": None, "despues": None, "archivo": None}
         if re.search(r"GOCSPX-[A-Za-z0-9_\-]{10,}", texto):      # secreto de Google: ni al registro ni a la IA
             log("telegram: recibido un secreto de Google como texto; no se procesa")
             return {"texto": ("Eso es el secreto de tu cuenta de Google: no hace falta mandarlo como texto, ya lo "
@@ -1529,7 +1552,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),
