@@ -56,7 +56,9 @@ else
         read -r R
         [ "$R" = "BORRAR" ] || { echo "Cancelado. No se ha tocado nada."; exit 1; }
     fi
-    for m in $(lsblk -nro MOUNTPOINT "$DESTINO" | grep -v '^$' | sort -r); do umount "$m"; done
+    # desmontar lo que el escritorio haya montado (los nombres pueden llevar espacios: «Disco externo»)
+    lsblk -nlo MOUNTPOINT "$DESTINO" | grep -v '^$' | sort -r | while IFS= read -r m; do umount "$m" || umount -l "$m"; done
+    if lsblk -nlo MOUNTPOINT "$DESTINO" | grep -q .; then echo "No he podido desmontar $DESTINO. Ciérralo en el explorador y repite."; exit 1; fi
 fi
 [ "$REANUDAR" = 1 ] || : > "$LOG"
 parte() { if [ -e "${DESTINO}p$1" ]; then echo "${DESTINO}p$1"; else echo "${DESTINO}$1"; fi; }
