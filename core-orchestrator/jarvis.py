@@ -230,6 +230,12 @@ class Interfaz:
         ui = self
 
         class Manejador(BaseHTTPRequestHandler):
+            def handle(self):              # quien pregunta y se va (la espera del arranque) no es un error
+                try:
+                    super().handle()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
             def log_message(self, *args):
                 pass
 

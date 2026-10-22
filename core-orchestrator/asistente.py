@@ -596,6 +596,12 @@ def servir(abrir: bool = True) -> None:
     asis = Asistente(print, embebido=False, google=google, al_terminar=terminado.set)
 
     class Manejador(BaseHTTPRequestHandler):
+        def handle(self):              # quien pregunta y se va (la espera del arranque) no es un error
+            try:
+                super().handle()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
         def log_message(self, *a):
             pass
 
