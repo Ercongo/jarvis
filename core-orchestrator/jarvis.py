@@ -133,7 +133,9 @@ ORDENES_CONOCIDAS = (
     "OMNIROUTE (otras IA gratis cuando Groq se agota): estado de OmniRoute; prueba OmniRoute; usa OmniRoute para "
     "pensar; arranca OmniRoute; para OmniRoute; conecta <Gemini, Cerebras, Mistral, NVIDIA…> a OmniRoute. "
     "ACTUALIZACIONES: busca actualizaciones (del sistema); actualiza el sistema; busca actualizaciones del "
-    "asistente; actualiza el asistente; qué versiones tienes."
+    "asistente; actualiza el asistente; qué versiones tienes. "
+    "SONIDO: pon el sonido por el monitor / por los auriculares o altavoces auxiliares / por los altavoces del "
+    "portátil; por dónde sale el sonido; revisa el audio (o «no se oye»)."
 )
 
 def _ordenes_fijas() -> list[str]:
@@ -155,7 +157,9 @@ def es_orden_fija(texto: str) -> bool:
     # lo que trabaja con sus archivos de oficina: las reglas de oficina son exactas (abren, suman y añaden de
     # verdad); el cerebro de reserva contestaba «no tengo el contenido» o se inventaba la suma
     if re.search(r"\b(excel|hoja de calculo|word|pdf|plano|presentacion|powerpoint|omni ?rout\w*|omniru\w*)\b", t) \
-            or re.search(r"\b(usa|piensa con) (a )?groq\b", t):
+            or re.search(r"\b(usa|piensa con) (a )?groq\b", t) \
+            or re.search(r"\b(sonido|audio)\b.*\b(por|monitor|hdmi|auriculares|altavo\w+|jack|revisa|sale|oye)\b"
+                         r"|\b(revisa|arregla|comprueba)\w* (el )?(audio|sonido)\b|\bno (se oye|suena)\b", t):
         return True
     if len(t) > 60:
         return False
@@ -933,6 +937,8 @@ class Jarvis:
         self.actualizador = Actualizador(self.decir, self.confirmar, log, avisar=self.tg.enviar,
                                          es_telegram=lambda: getattr(self._canal, "tg", False), omni=self.omni)
         self.actualizador.vigilar()                     # cada semana mira si hay versiones nuevas y te avisa
+        from audio import Audio
+        self.audio = Audio(log)                         # por dónde sale el sonido (HDMI, jack, altavoces) y revisarlo
         self.saber.nex = self.nex                       # las investigaciones a fondo las redacta Nex
         self._ultima_entrada: str | None = None
         self._ultima_charla = 0.0
@@ -1558,7 +1564,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),
