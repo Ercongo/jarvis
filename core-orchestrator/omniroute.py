@@ -36,7 +36,7 @@ SERVICIO = "omniroute.service"
 # forma de la clave). Solo los que se reconocen sin dudar en un mensaje.
 PROVEEDORES = {
     "groq": ("Groq", "https://console.groq.com/keys", r"gsk_[A-Za-z0-9]{20,}"),
-    "gemini": ("Google Gemini", "https://aistudio.google.com/apikey", r"AIza[0-9A-Za-z_\-]{30,}"),
+    "gemini": ("Google Gemini", "https://aistudio.google.com/apikey", r"AIza[0-9A-Za-z_\-]{30,}|AQ\.[0-9A-Za-z_\-]{30,}"),
     "cerebras": ("Cerebras", "https://cloud.cerebras.ai", r"csk-[A-Za-z0-9]{20,}"),
     "openrouter": ("OpenRouter", "https://openrouter.ai/keys", r"sk-or-v1-[A-Za-z0-9]{20,}"),
     "mistral": ("Mistral", "https://console.mistral.ai/api-keys", r"[A-Za-z0-9]{32}"),
@@ -334,11 +334,19 @@ class OmniRoute:
         m = re.match(r"(?is)\s*(?:clave|key|token)\s+(?:de|del|para)\s+([a-z ]{3,20}?)\s*[:=]?\s+(\S{16,})\s*$",
                      texto)
         if not m:
-            return None
-        nombre = ALIAS_PROVEEDOR.get(normalizar(m.group(1)).strip())
+            # también vale pegar el ejemplo de Google AI Studio (curl … generativelanguage … X-goog-api-key: …)
+            mm = re.search(r"generativelanguage\.googleapis\.com", texto or "") and \
+                re.search(r"(AIza[0-9A-Za-z_\-]{30,}|AQ\.[0-9A-Za-z_\-]{30,})", texto)
+            if not mm:
+                return None
+            m = re.match(r"(.*)", "gemini")
+            nombre, clave_pegada = "gemini", mm.group(1)
+        else:
+            clave_pegada = None
+        nombre = "gemini" if clave_pegada else ALIAS_PROVEEDOR.get(normalizar(m.group(1)).strip())
         if not nombre or nombre in ("groq", "openrouter", "huggingface"):
             return None                     # esas ya tienen su propio camino (y luego se sincronizan aquí)
-        clave = m.group(2).strip()
+        clave = clave_pegada or m.group(2).strip()
         if not re.fullmatch(PROVEEDORES[nombre][2], clave):
             return f"Eso no parece una clave de {PROVEEDORES[nombre][0]}. Cópiala entera."
         self.log(f"omniroute: recibida una clave de {nombre} (no se guarda en el registro)")

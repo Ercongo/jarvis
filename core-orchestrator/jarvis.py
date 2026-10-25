@@ -244,8 +244,19 @@ def auditar(tipo: str, detalle: str, **extra) -> None:
         f.write(json.dumps(evento, ensure_ascii=False) + "\n")
 
 
+RE_SECRETO = re.compile(
+    r"AIza[0-9A-Za-z_\-]{30,}|AQ\.[0-9A-Za-z_\-]{30,}|gsk_[0-9A-Za-z]{20,}|sk-or-v1-[0-9A-Za-z]{20,}|"
+    r"sk-[A-Za-z0-9_\-]{24,}|hf_[0-9A-Za-z]{20,}|ghp_[0-9A-Za-z]{20,}|github_pat_[0-9A-Za-z_]{20,}|"
+    r"GOCSPX-[0-9A-Za-z_\-]{10,}|\b\d{8,10}:[0-9A-Za-z_\-]{30,}|1//[0-9A-Za-z_\-]{30,}|omni-[0-9a-f]{40,}")
+
+
+def ocultar_secretos(texto: str) -> str:
+    """Las claves (Groq, Gemini, OpenRouter, Hugging Face, GitHub, Google, Telegram…) nunca llegan al registro."""
+    return RE_SECRETO.sub(lambda m: m.group(0)[:4] + "…[clave oculta]", texto)
+
+
 def log(msg: str) -> None:
-    print(f"[{dt.datetime.now():%H:%M:%S}] {msg}", flush=True)
+    print(f"[{dt.datetime.now():%H:%M:%S}] {ocultar_secretos(str(msg))}", flush=True)
 
 
 # =============================================================== interfaz (servidor local)
@@ -1146,6 +1157,12 @@ class Jarvis:
             log("telegram: recibido un secreto de Google como texto; no se procesa")
             return {"texto": ("Eso es el secreto de tu cuenta de Google: no hace falta mandarlo como texto, ya lo "
                               "tengo del archivo. Borra ese mensaje del chat, por seguridad."),
+                    "susurro": None, "despues": None, "archivo": None}
+        if RE_SECRETO.search(texto):                       # cualquier otra clave pegada: ni a la IA ni al registro
+            log("telegram: recibido un mensaje con una clave; no se manda a la IA")
+            return {"texto": ("Ese mensaje lleva una clave. No la mando a la IA ni la apunto. Si es para conectar un "
+                              "proveedor a OmniRoute, mándamela así: clave de gemini y la clave. Después borra el "
+                              "mensaje del chat, por seguridad."),
                     "susurro": None, "despues": None, "archivo": None}
         m = re.search(r"(?i)\bpollinations\b\W*(?:token|clave|key)?\W*([A-Za-z0-9_\-\.]{12,})\s*$", texto.strip())
         if m:                                           # clave de Pollinations (imágenes): ni al registro ni a la IA
