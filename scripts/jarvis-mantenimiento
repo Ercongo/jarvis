@@ -24,11 +24,18 @@ case "${1:-}" in
     if command -v snap >/dev/null; then snap refresh; fi
     apt-get -y autoremove --purge
     ;;
+  ollama)
+    # la IA local de reserva, con su instalador oficial (necesita zstd para descomprimirse)
+    command -v zstd >/dev/null || apt-get install -y -qq zstd
+    curl -fsSL https://ollama.com/install.sh -o /tmp/ollama-install.sh || exit 1
+    sh /tmp/ollama-install.sh || exit 1
+    rm -f /tmp/ollama-install.sh
+    ;;
   reiniciar)
     systemctl reboot ;;
   apagar)
     systemctl poweroff ;;
   *)
-    echo "uso: $0 ping|limpiar|refrescar|actualizar|reiniciar|apagar" >&2
+    echo "uso: $0 ping|limpiar|refrescar|actualizar|ollama|reiniciar|apagar" >&2
     exit 2 ;;
 esac

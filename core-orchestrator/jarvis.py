@@ -131,7 +131,9 @@ ORDENES_CONOCIDAS = (
     "qué hay de nuevo de mis temas; qué sabes de mí; olvida que <dato>. "
     "NEX: encarga a Nex <tarea de varios pasos>; cuánto llevo gastado en Nex. "
     "OMNIROUTE (otras IA gratis cuando Groq se agota): estado de OmniRoute; prueba OmniRoute; usa OmniRoute para "
-    "pensar; arranca OmniRoute; para OmniRoute; conecta <Gemini, Cerebras, Mistral, NVIDIA…> a OmniRoute."
+    "pensar; arranca OmniRoute; para OmniRoute; conecta <Gemini, Cerebras, Mistral, NVIDIA…> a OmniRoute. "
+    "ACTUALIZACIONES: busca actualizaciones (del sistema); actualiza el sistema; busca actualizaciones del "
+    "asistente; actualiza el asistente; qué versiones tienes."
 )
 
 def _ordenes_fijas() -> list[str]:
@@ -927,6 +929,10 @@ class Jarvis:
         self.omni = OmniRoute(log, es_telegram=lambda: getattr(self._canal, "tg", False))
         self.cerebro.omni = self.omni                   # …y antes que Nex, OmniRoute (si está instalado)
         threading.Thread(target=self._preparar_omni, daemon=True).start()
+        from actualizar import Actualizador
+        self.actualizador = Actualizador(self.decir, self.confirmar, log, avisar=self.tg.enviar,
+                                         es_telegram=lambda: getattr(self._canal, "tg", False), omni=self.omni)
+        self.actualizador.vigilar()                     # cada semana mira si hay versiones nuevas y te avisa
         self.saber.nex = self.nex                       # las investigaciones a fondo las redacta Nex
         self._ultima_entrada: str | None = None
         self._ultima_charla = 0.0
@@ -1552,7 +1558,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),

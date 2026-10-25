@@ -280,8 +280,8 @@ class OmniRoute:
         if re.search(r"\busa (a )?groq\b|\bpiensa con groq\b", t) and self.configurado:
             guardar_config(omniroute_primero=False)
             return Respuesta("Hecho: pienso primero con Groq y OmniRoute queda de reserva.")
-        if not re.search(r"\bomni ?rout|\bomni ?ruta?\b|\bomniru\w*", t):
-            return None
+        if not re.search(r"\bomni ?rout|\bomni ?ruta?\b|\bomniru\w*", t) or re.search(r"\bactualiz", t):
+            return None                     # «actualiza OmniRoute» lo lleva actualizar.py
         if not self.configurado:
             return Respuesta("OmniRoute no está instalado todavía. En el portátil se instala con: bash "
                              "~/jarvis/instalar_omniroute.sh (unos 2 GB). Luego te reparto el trabajo entre "
