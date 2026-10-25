@@ -114,7 +114,8 @@ class Actualizador:
     def resumen(info: dict) -> str:
         partes = []
         if info["pip_menores"]:
-            partes.append(f"{len(info['pip_menores'])} paquetes de Python con mejoras menores")
+            n = len(info['pip_menores'])
+            partes.append("1 paquete de Python con mejoras menores" if n == 1 else f"{n} paquetes de Python con mejoras menores")
         if info["omniroute"]:
             partes.append(f"OmniRoute {info['omniroute'][0]} → {info['omniroute'][1]}")
         if info["ollama"]:
@@ -155,7 +156,8 @@ class Actualizador:
         viejas = sorted(COPIAS.glob("venv_antes_*"))[:-2]          # solo las dos últimas copias
         for v in viejas:
             shutil.rmtree(v, ignore_errors=True)
-        return f"{len(nombres)} paquetes de Python actualizados y probados."
+        return ("1 paquete de Python actualizado y probado." if len(nombres) == 1
+                else f"{len(nombres)} paquetes de Python actualizados y probados.")
 
     def _actualizar_omniroute(self, versiones: tuple[str, str] | None) -> str:
         if not versiones:

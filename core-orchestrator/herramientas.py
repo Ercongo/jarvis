@@ -691,7 +691,9 @@ class Herramientas:
                 nombres.append(que)
             if total == 0:
                 return Resultado(f"No veo ninguna ventana de {' ni '.join(nombres)} abierta.")
-            return Resultado("Hecho." if total == 1 else f"He cerrado {total} ventanas.")
+            if total == 1:                                # que diga qué ha cerrado («Hecho» a secas no lo confirma)
+                return Resultado(f"He cerrado {re.sub(r'^(el|la|los|las) (ventana|programa) (de )?', '', m.group(2))}.")
+            return Resultado(f"He cerrado {total} ventanas.")
 
         m = RE_ABRIR_APP.match(t)
         if m:
