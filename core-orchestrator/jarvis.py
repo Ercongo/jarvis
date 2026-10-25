@@ -169,7 +169,7 @@ def es_orden_fija(texto: str) -> bool:
     # verdad); el cerebro de reserva contestaba «no tengo el contenido» o se inventaba la suma
     if re.search(r"\b(excel|hoja de calculo|word|pdf|plano|presentacion|powerpoint|omni ?rout\w*|omniru\w*)\b", t) \
             or re.search(r"\b(usa|piensa con) (a )?groq\b", t) \
-            or re.search(r"\b(diagrama|esquema|mapa mental|mapa conceptual|organigrama|infografia)\b"
+            or re.search(r"\b(diagrama|esquema|mapa mental|mapa conceptual|organigrama|infografia|herramientas visuales)\b"
                          r"|\b(video|animacion)\b.*\b(animad\w*|explicativo|con texto|con animaciones)\b", t) \
             or re.search(r"\b(chat web|open ?web ?ui|comfy ?ui|linutil|winutil|caja de herramientas de linux)\b"
                          r"|\b(en local|sin internet)\b.*\b(imagen|foto|dibujo)\b|\b(imagen|foto|dibujo)\b.*\b(en local|sin internet)\b", t) \

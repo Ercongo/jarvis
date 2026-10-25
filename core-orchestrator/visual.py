@@ -123,7 +123,7 @@ segundos en español de España sobre el encargo, sin inventar datos dudosos. De
 {"titulo": "título corto del vídeo", "subtitulo": "una línea", \
 "paleta": {"fondo": "#hex oscuro", "fondo2": "#hex", "tinta": "#hex claro", "acento": "#hex vivo"}, \
 "escenas": [{"titulo": "2-5 palabras", "texto": "una frase de máx. 14 palabras para la pantalla", \
-"voz": "lo que dice el narrador en esta escena, 1-2 frases naturales", "icono": "un emoji que la represente"}], \
+"voz": "lo que dice el narrador en esta escena, 1-2 frases naturales"}], \
 "cierre": "frase final corta"}
 Entre 3 y 6 escenas. La paleta debe tener buen contraste (texto claro sobre fondo oscuro)."""
 
@@ -154,7 +154,7 @@ def composicion(spec: dict, duraciones: list[float], audios: list[str | None], a
     t0 = portada
     for i, (s, d) in enumerate(zip(esc, duraciones), 1):
         bloques.append(f'''<div id="e{i}" class="esc clip" data-start="{t0:.2f}" data-duration="{d:.2f}" data-track-index="0">
-  <div class="num">{i:02d}</div><div class="caja"><div id="i{i}" class="icono">{e(s.get("icono"))}</div>
+  <div class="caja"><div id="i{i}" class="icono">{i:02d}</div>
   <div id="t{i}" class="titulo">{e(s.get("titulo"))}</div><div id="x{i}" class="texto">{e(s.get("texto"))}</div></div>
   <div id="b{i}" class="barra"></div></div>''')
         tl += [f'tl.from("#i{i}",{{scale:0,rotation:-25,opacity:0,duration:0.7,ease:"back.out(2)"}},{t0 + 0.15:.2f});',
@@ -190,9 +190,8 @@ html,body{{width:{ancho}px;height:{alto}px;overflow:hidden;background:var(--fond
 .grande{{font-size:72px}}
 .sub{{font-size:28px;opacity:.85;margin-top:22px}}
 .texto{{font-size:34px;line-height:1.35;margin-top:26px;opacity:.92}}
-.icono{{font-size:88px;margin-bottom:18px}}
+.icono{{width:112px;height:112px;margin:0 auto 22px;border:5px solid var(--acento);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:46px;font-weight:800;color:var(--acento)}}
 .linea{{width:180px;height:6px;background:var(--acento);margin:26px auto 0;border-radius:3px;transform-origin:left}}
-.num{{position:absolute;top:44px;left:64px;font-size:30px;font-weight:800;color:var(--acento)}}
 .barra{{position:absolute;left:0;bottom:0;height:8px;width:100%;background:var(--acento);transform-origin:left}}
 </style></head><body>
 <div id="root" data-composition-id="main" data-start="0" data-duration="{total:.2f}" data-width="{ancho}" data-height="{alto}">
