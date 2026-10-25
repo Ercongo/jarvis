@@ -244,6 +244,10 @@ class Instalar:
         m = re.match(r"^(?:instala|instalame|instalar|puedes instalar|quiero que instales|me instalas)\s+(.+)$", t)
         if not m:
             return None
+        if re.search(r"\b(github|repositorio)\b", t) or re.fullmatch(
+                r"(?:el|la) (?:primer\w*|segund\w*|tercer\w*|cuart\w*|quint\w*|ultim\w*|[1-5])(?: repositorio| proyecto| de la lista)?",
+                m.group(1).strip()):
+            return None                                   # «instala el segundo» tras buscar en GitHub: lo lleva saber.py
         resto = m.group(1).strip()
         rutas = instaladores()
         if re.search(r"\b(descarg|que acabo de|ultimo|el archivo|el instalador|app ?imag|appimage|punto deb|\.deb)\b",

@@ -128,14 +128,23 @@ ORDENES_CONOCIDAS = (
     "desinstala <programa>. MÓVIL: dónde está mi móvil; cuánta batería tiene el móvil; manda la foto/el archivo al móvil; manda un sms a <persona>: <texto>; qué avisos tengo en el móvil; léeme los whatsapps; contesta a <persona>: <texto>; escribe a <persona> por whatsapp: <texto>. CONFIGURACIÓN: abre la configuración (cambiar nombre, voz, color, pantallas, cuentas). MODO: no me molestes [hasta las <hora>]; ya puedes hablar. "
     "SABER: investiga [a fondo] sobre <tema>; qué has investigado; olvida lo que investigaste de <tema>; aprende mis "
     "documentos; qué dicen mis documentos sobre <tema>; mantenme informado sobre <tema>; deja de seguir <tema>; "
-    "qué hay de nuevo de mis temas; qué sabes de mí; olvida que <dato>. "
+    "qué hay de nuevo de mis temas; qué sabes de mí; olvida que <dato>; aprende sobre <tema> (internet + YouTube + "
+    "GitHub); investiga en github/youtube/internet <tema>; busca en github <x>; háblame del primero; investiga el "
+    "repositorio <propietario/nombre>; aprende de youtube <tema>; resume el vídeo <enlace>; ponlo en práctica; aplica lo "
+    "que has aprendido sobre <tema>; instala el primero (de GitHub); aprende por tu cuenta; qué has aprendido por tu cuenta. "
     "NEX: encarga a Nex <tarea de varios pasos>; cuánto llevo gastado en Nex. "
     "OMNIROUTE (otras IA gratis cuando Groq se agota): estado de OmniRoute; prueba OmniRoute; usa OmniRoute para "
     "pensar; arranca OmniRoute; para OmniRoute; conecta <Gemini, Cerebras, Mistral, NVIDIA…> a OmniRoute. "
     "ACTUALIZACIONES: busca actualizaciones (del sistema); actualiza el sistema; busca actualizaciones del "
     "asistente; actualiza el asistente; qué versiones tienes. "
     "SONIDO: pon el sonido por el monitor / por los auriculares o altavoces auxiliares / por los altavoces del "
-    "portátil; por dónde sale el sonido; revisa el audio (o «no se oye»)."
+    "portátil; por dónde sale el sonido; revisa el audio (o «no se oye»). "
+    "DATOS AL MOMENTO: cuándo es el próximo festivo; qué festivos hay en <mes>; es festivo mañana; a cuánto está el "
+    "dólar; cuántos dólares son <n> euros; a cuánto está el bitcoin; cuánto cuesta la luz hoy; a qué hora es más barata "
+    "la luz [mañana]; dónde está la gasolina/el diésel más barato [en <ciudad>]; qué tal está el aire; cuánto polen hay; "
+    "a qué hora amanece/anochece; busca en la wikipedia <x>; dónde está la estación espacial; qué datos puedes consultar. "
+    "IA LOCAL: abre/cierra el chat web (Open WebUI); crea una imagen en local de <x> (ComfyUI, sin internet); abre la "
+    "caja de herramientas de linux (Linutil); qué herramientas de ia locales tienes."
 )
 
 def _ordenes_fijas() -> list[str]:
@@ -158,6 +167,16 @@ def es_orden_fija(texto: str) -> bool:
     # verdad); el cerebro de reserva contestaba «no tengo el contenido» o se inventaba la suma
     if re.search(r"\b(excel|hoja de calculo|word|pdf|plano|presentacion|powerpoint|omni ?rout\w*|omniru\w*)\b", t) \
             or re.search(r"\b(usa|piensa con) (a )?groq\b", t) \
+            or re.search(r"\b(chat web|open ?web ?ui|comfy ?ui|linutil|winutil|caja de herramientas de linux)\b"
+                         r"|\b(en local|sin internet)\b.*\b(imagen|foto|dibujo)\b|\b(imagen|foto|dibujo)\b.*\b(en local|sin internet)\b", t) \
+            or re.search(r"\b(festivos?|bitcoin|ethereum|polen|wikipedia|estacion espacial|gasolineras?)\b"
+                         r"|\b(precio|cuesta|barata|cara)\b.*\b(luz|diesel|gasoil|gasolina)\b|\ba cuanto esta el\b"
+                         r"|\bcuant[oa]s \w+ son\b|\b(amanece|anochece|se pone el sol)\b|\bcalidad del aire\b", t) \
+            or re.search(r"^(hablame|cuentame|explicame|instala|instalame|prueba|resume|resumeme)\w* (del?|el) "
+                         r"(primero|primer|segundo|tercero|tercer|cuarto|quinto|ultimo)( video| repositorio)?$", t) \
+            or re.search(r"\b(github|repositorio)\b|\b(ponlo|ponla|pon) en practica\b|\blo que (sabes|has aprendido)\b"
+                         r"|\byoutube\b.*\b(resum\w*|aprend\w*|explica\w*)\b|\b(resum\w*|aprend\w*)\b.*\byoutube\b"
+                         r"|\bresume\w* (el|los|este) videos?\b|\b(aprend\w*|investiga\w*) (tu solo|por tu cuenta|sola)\b", t) \
             or re.search(r"\b(sonido|audio)\b.*\b(por|monitor|hdmi|auriculares|altavo\w+|jack|revisa|sale|oye)\b"
                          r"|\b(revisa|arregla|comprueba)\w* (el )?(audio|sonido)\b|\bno (se oye|suena)\b", t):
         return True
@@ -939,7 +958,17 @@ class Jarvis:
         self.actualizador.vigilar()                     # cada semana mira si hay versiones nuevas y te avisa
         from audio import Audio
         self.audio = Audio(log)                         # por dónde sale el sonido (HDMI, jack, altavoces) y revisarlo
+        from apis import Apis
+        self.apis = Apis(log)                           # festivos, divisas, luz, gasolina, polen… (APIs gratis)
+        from servicios_ia import ServiciosIA            # Open WebUI, ComfyUI y Linutil, encendidos solo al usarlos
+        self.servicios = ServiciosIA(log, decir=self.decir, traducir=self._prompt_ingles,
+                                     es_telegram=lambda: getattr(self._canal, "tg", False),
+                                     enviar_foto=self.tg.enviar_foto)
         self.saber.nex = self.nex                       # las investigaciones a fondo las redacta Nex
+        from practica import Practica                   # poner en práctica lo aprendido, siempre con permiso
+        self.saber.practica = Practica(self.saber._ia, self.preguntar, self.decir, self.tg.enviar, log,
+                                       ejecutar_orden=self._orden_de_plan, ordenes=ORDENES_CONOCIDAS,
+                                       es_telegram=lambda: getattr(self._canal, "tg", False), ui=self.ui)
         self._ultima_entrada: str | None = None
         self._ultima_charla = 0.0
         self._recientes: collections.deque = collections.deque(maxlen=5)   # para no repetirse
@@ -1293,6 +1322,24 @@ class Jarvis:
     def confirmar(self, accion: str) -> bool:
         return self._si_o_no(accion, f"Voy a {accion}. ¿Lo confirmas?")
 
+    def _prompt_ingles(self, texto: str) -> str:
+        """Descripción de imagen en inglés para ComfyUI (SD-Turbo entiende mal el español)."""
+        if not self.cerebro.activo:
+            return texto
+        r = self.cerebro.chat([{"role": "system", "content": "Translate the image description into a short, vivid "
+                                "English prompt for Stable Diffusion (max 40 words). Reply with the prompt only."},
+                               {"role": "user", "content": texto}], max_tokens=120, temperatura=0.4, timeout=20,
+                              ligero=True)
+        return (r or texto).strip().strip('"')
+
+    def _orden_de_plan(self, texto: str) -> str:
+        """Un paso «orden» de un plan de practica.py: se hace como si lo hubiera pedido el usuario."""
+        log(f"plan: orden «{texto}»")
+        r = self.procesar(texto, 1)
+        if r.get("despues"):
+            r["despues"]()
+        return r.get("texto", "")
+
     def preguntar(self, pregunta: str) -> bool:
         """Una pregunta de sí o no (por voz o por Telegram)."""
         return self._si_o_no(pregunta, pregunta)
@@ -1321,6 +1368,11 @@ class Jarvis:
         llamado, resto = separar_nombre(entrada)
         if llamado and resto:                          # por Telegram también se escribe "Jarvis, …"
             entrada = resto
+        pr = getattr(self.saber, "practica", None)     # ¿contesta «sí, hazlo» a un plan de los que propone?
+        if profundidad == 0 and pr is not None and pr.pendiente_vigente() and pr.es_respuesta(entrada):
+            log(f"plan: respuesta «{entrada}»")
+            return {"texto": pr.responder(entrada), "susurro": None, "despues": None, "archivo": None,
+                    "origen": "practica"}
         if profundidad < 2:
             try:
                 reescrito = self.aprende.reescribir(entrada, self._ultima_entrada)
@@ -1564,7 +1616,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),

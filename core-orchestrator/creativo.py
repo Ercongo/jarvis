@@ -132,6 +132,12 @@ def descargar_imagen(prompt: str, ancho: int, alto: int, destino: Path, semilla:
                 return est.imagen(prompt, ancho, alto, destino, semilla)
             except Exception:
                 pass
+        try:                                             # último recurso: ComfyUI en el propio portátil
+            import servicios_ia
+            if servicios_ia.comfy_disponible():
+                return servicios_ia.comfy_imagen(prompt, ancho, alto, destino, semilla)
+        except Exception:
+            pass
         raise
 
 

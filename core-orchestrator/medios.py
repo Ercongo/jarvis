@@ -292,6 +292,9 @@ class Medios:
             return None
 
         # ---- YouTube
+        if "youtube" in t2 and re.search(r"\b(resum\w*|aprend\w*|que dice\w*|explica\w*|estudia\w*|investiga\w*|"
+                                         r"informate)\b", t2):
+            return None                                   # aprender de los vídeos: lo lleva saber.py
         if "youtube" in t2:
             m = re.search(VERBO_BUSCAR + r"\s+(?:en youtube\s+(.+)|(.+?)\s+en youtube)$", t2)
             if m:
