@@ -111,13 +111,14 @@ def _mover_flujos(destino: str) -> None:
             _pactl("move-sink-input", ident, destino)
 
 
-def _quitar_silencio_tarjeta(tarjeta) -> list[str]:
-    """Los interruptores de la propia tarjeta (amixer): a veces Headphone o Speaker quedan silenciados aunque
-    PipeWire diga que no."""
+def _quitar_silencio_tarjeta(tarjeta, tipo: str = "") -> list[str]:
+    """Los interruptores de la propia tarjeta (amixer): a veces Master o Headphone quedan silenciados aunque
+    PipeWire diga que no. Solo los de la salida en uso: con algo en el jack, «Speaker» va apagado a propósito."""
     if tarjeta is None or not shutil.which("amixer"):
         return []
     arreglados = []
-    for control in ("Master", "Headphone", "Speaker", "PCM", "Front", "Line Out"):
+    propios = {"jack": ("Headphone", "Line Out", "Front"), "interno": ("Speaker",)}.get(tipo, ())
+    for control in ("Master", "PCM", *propios):
         try:
             r = subprocess.run(["amixer", "-c", str(tarjeta), "sget", control], capture_output=True, text=True,
                                timeout=4, env=ENTORNO)
@@ -227,7 +228,7 @@ class Audio:
             if otro:
                 _pactl("set-sink-port", d["nombre"], otro["nombre"])
                 hecho.append(f"he cambiado a {_nombre_humano(_tipo(d, otro['nombre']), d)}, porque la salida de antes no estaba conectada")
-        tarjeta = _quitar_silencio_tarjeta(d["tarjeta"])
+        tarjeta = _quitar_silencio_tarjeta(d["tarjeta"], _tipo(d))
         if tarjeta:
             hecho.append("he activado los interruptores de la tarjeta de sonido que estaban apagados (" + ", ".join(tarjeta) + ")")
         _mover_flujos(d["nombre"])
