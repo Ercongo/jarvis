@@ -57,13 +57,23 @@ fi
 
 # lo demás que usa el asistente en el portátil original: vídeo y música (VLC), planos (LibreCAD y LibreDWG para
 # leer DWG), capturas, monitor del sistema, portapapeles y dibujo de LibreOffice
-instalar vlc librecad flameshot btop xsel libreoffice-draw gnome-calculator
+instalar vlc librecad flameshot btop xsel libreoffice-draw gnome-calculator zstd pkg-config
 # LibreCAD sin su ventana de bienvenida (sale encima de todo al convertir un plano) y en español, en metros
 mkdir -p /etc/skel/.config/LibreCAD
 printf '[Appearance]\nLanguage=es\nLanguageCmd=es\n\n[Defaults]\nUnit=Meter\n\n[Startup]\nFirstLoad=0\n' \
     > /etc/skel/.config/LibreCAD/LibreCAD.conf
-apt-get install -y --no-install-recommends libredwg-tools || apt-get install -y --no-install-recommends libredwg-utils \
-    || echo libredwg >> /var/log/paquetes_omitidos.txt
+# LibreDWG (leer planos DWG): Ubuntu 26.04 no lo trae; se compila (varios minutos) y, si falla, se apunta
+T=$(mktemp -d)
+V=$(curl -fsSL https://ftp.gnu.org/gnu/libredwg/ | grep -oE "libredwg-[0-9]+\.[0-9]+(\.[0-9]+)?\.tar\.xz" | sort -V | tail -1 || true)
+if [ -n "$V" ] && curl -fsSL "https://ftp.gnu.org/gnu/libredwg/$V" -o "$T/$V" && mkdir "$T/src" \
+   && tar -xJf "$T/$V" -C "$T/src" --strip-components=1 \
+   && (cd "$T/src" && ./configure --prefix=/usr/local --disable-bindings --disable-python --disable-shared \
+       && make -j"$(nproc)" && make install) >/tmp/dwg.log 2>&1; then
+    echo "LibreDWG $V instalado"
+else
+    echo libredwg >> /var/log/paquetes_omitidos.txt
+fi
+rm -rf "$T"
 
 # la red la lleva NetworkManager (wifi y cable en cualquier PC)
 mkdir -p /etc/netplan
