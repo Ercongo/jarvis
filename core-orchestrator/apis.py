@@ -281,7 +281,9 @@ class Apis:
         if not precios:
             return Respuesta(f"No hay precios de {m.group(1)} en {mun['Municipio']} ahora mismo.")
         precios.sort()
-        texto = (f"{m.group(1).capitalize()} en {mun['Municipio']}: la más barata es {precios[0][1]}, en "
+        nombre = {"diesel": "Diésel", "gasoil": "Gasoil", "gasoleo": "Gasóleo", "glp": "Autogás (GLP)",
+                  "autogas": "Autogás"}.get(m.group(1), m.group(1).capitalize())
+        texto = (f"{nombre} en {mun['Municipio']}: la más barata es {precios[0][1]}, en "
                  f"{precios[0][2]}, a {num(precios[0][0], 3)} euros el litro.")
         if len(precios) > 2:
             texto += (f" La siguiente, {precios[1][1]} a {num(precios[1][0], 3)}. La más cara está a "

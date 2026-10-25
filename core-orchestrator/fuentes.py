@@ -65,7 +65,9 @@ def _ficha(r: dict) -> dict:
 
 def github_buscar(consulta: str, n: int = 5) -> list[dict]:
     """Repositorios que vienen al caso, los más útiles primero (relevancia + estrellas, sin archivados)."""
-    d = _gh("/search/repositories", {"q": consulta, "per_page": 15})
+    d = _gh("/search/repositories", {"q": f"{consulta} stars:>=15", "per_page": 15})   # sin proyectos de prueba
+    if not d.get("items"):
+        d = _gh("/search/repositories", {"q": consulta, "per_page": 15})
     repos = [_ficha(r) for r in d.get("items", []) if not r.get("fork")]
     vivos = [r for r in repos if not r["archivado"]] or repos
     # GitHub ordena por relevancia; entre los 8 primeros, sube los que tienen muchas estrellas

@@ -1,4 +1,4 @@
-aiohappyeyeballs==2.7.1
+﻿aiohappyeyeballs==2.7.1
 aiohttp==3.14.5
 aiosignal==1.4.0
 anyio==4.15.1
@@ -16,6 +16,7 @@ csvw==4.1.1
 ctranslate2==4.8.2
 cycler==0.12.1
 ddgs==9.16.0
+youtube-transcript-api==1.2.4
 dlinfo==2.0.0
 edge-tts==7.3.1
 espeakng-loader==0.2.4

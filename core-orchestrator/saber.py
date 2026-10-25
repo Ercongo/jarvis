@@ -523,8 +523,16 @@ class Saber:
         return Respuesta(aviso)
 
     def buscar_github(self, consulta: str) -> Respuesta:
+        busqueda = consulta
+        if self.ia and re.search(r"[a-záéíóúñ]{3,}", consulta.lower()):
+            try:                                        # en GitHub casi todo está en inglés
+                busqueda = self._ia("Convert the request into 2-5 English keywords for a GitHub repository search. "
+                                    "Reply with the keywords only, no quotes.", consulta, max_tokens=40,
+                                    json_=False, timeout=15, ligero=True).strip().strip('"')[:80] or consulta
+            except Exception:
+                busqueda = consulta
         try:
-            repos = fuentes.github_buscar(consulta, 5)
+            repos = fuentes.github_buscar(busqueda, 5) or (fuentes.github_buscar(consulta, 5) if busqueda != consulta else [])
         except Exception as e:
             return Respuesta(f"No he podido buscar en GitHub: {e}" if isinstance(e, RuntimeError)
                              else "No he podido buscar en GitHub ahora mismo.")
