@@ -144,7 +144,9 @@ ORDENES_CONOCIDAS = (
     "la luz [mañana]; dónde está la gasolina/el diésel más barato [en <ciudad>]; qué tal está el aire; cuánto polen hay; "
     "a qué hora amanece/anochece; busca en la wikipedia <x>; dónde está la estación espacial; qué datos puedes consultar. "
     "IA LOCAL: abre/cierra el chat web (Open WebUI); crea una imagen en local de <x> (ComfyUI, sin internet); abre la "
-    "caja de herramientas de linux (Linutil); qué herramientas de ia locales tienes."
+    "caja de herramientas de linux (Linutil); qué herramientas de ia locales tienes. "
+    "DIAGRAMAS Y VÍDEOS ANIMADOS: haz un esquema/diagrama/mapa mental de <tema o proceso>; haz un vídeo animado sobre "
+    "<tema> [sin voz]."
 )
 
 def _ordenes_fijas() -> list[str]:
@@ -167,6 +169,8 @@ def es_orden_fija(texto: str) -> bool:
     # verdad); el cerebro de reserva contestaba «no tengo el contenido» o se inventaba la suma
     if re.search(r"\b(excel|hoja de calculo|word|pdf|plano|presentacion|powerpoint|omni ?rout\w*|omniru\w*)\b", t) \
             or re.search(r"\b(usa|piensa con) (a )?groq\b", t) \
+            or re.search(r"\b(diagrama|esquema|mapa mental|mapa conceptual|organigrama|infografia)\b"
+                         r"|\b(video|animacion)\b.*\b(animad\w*|explicativo|con texto|con animaciones)\b", t) \
             or re.search(r"\b(chat web|open ?web ?ui|comfy ?ui|linutil|winutil|caja de herramientas de linux)\b"
                          r"|\b(en local|sin internet)\b.*\b(imagen|foto|dibujo)\b|\b(imagen|foto|dibujo)\b.*\b(en local|sin internet)\b", t) \
             or re.search(r"\b(festivos?|bitcoin|ethereum|polen|wikipedia|estacion espacial|gasolineras?)\b"
@@ -971,6 +975,11 @@ class Jarvis:
         self.audio = Audio(log)                         # por dónde sale el sonido (HDMI, jack, altavoces) y revisarlo
         from apis import Apis
         self.apis = Apis(log)                           # festivos, divisas, luz, gasolina, polen… (APIs gratis)
+        from visual import Visual                       # diagramas (Archify) y vídeos animados (HyperFrames)
+        self.visual = Visual(self.cerebro, self.decir, log, avisar=self.tg.enviar,
+                             enviar_documento=self.tg.enviar_documento,
+                             es_telegram=lambda: getattr(self._canal, "tg", False),
+                             sintetizar=getattr(self.creativo, "sintetizar", None))
         from servicios_ia import ServiciosIA            # Open WebUI, ComfyUI y Linutil, encendidos solo al usarlos
         self.servicios = ServiciosIA(log, decir=self.decir, traducir=self._prompt_ingles,
                                      es_telegram=lambda: getattr(self._canal, "tg", False),
@@ -1633,7 +1642,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.visual, "visual"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),

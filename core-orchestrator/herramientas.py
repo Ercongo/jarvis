@@ -334,8 +334,20 @@ def buscar_archivos(texto: str, solo_carpetas: bool = False, maximo: int = 8) ->
     return [p for _, p in puntuadas[:maximo]]
 
 
+EXT_ANYDOC = {".doc", ".docx", ".docm", ".ppt", ".pps", ".pptx", ".pptm", ".ppsx", ".xls", ".xlsx", ".xlsm", ".xlsb",
+              ".odt", ".ods", ".odp", ".rtf", ".epub", ".pdf"}
+
+
 def leer_texto(ruta: Path, limite: int = 6000) -> str:
     suf = ruta.suffix.lower()
+    if suf in EXT_ANYDOC:                              # anydoc (Firecrawl, MIT): Word, PowerPoint, Excel, PDF… a Markdown
+        try:                                           # limpio, con tablas y títulos. Si no está o falla, lo de siempre.
+            import anydoc
+            texto = anydoc.to_markdown(str(ruta))
+            if texto and texto.strip():
+                return texto[:limite]
+        except Exception:
+            pass
     try:
         if suf == ".pdf" and shutil.which("pdftotext"):
             r = subprocess.run(["pdftotext", "-l", "8", str(ruta), "-"], capture_output=True, text=True, timeout=20)
