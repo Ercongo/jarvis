@@ -172,6 +172,66 @@ async function accion(id, acc, valor) {
     return { ok: true, via: "echo", nombre: d.nombre };
 }
 
+// ---- estado encendido/apagado de cada aparato (lo que muestra la pantalla del asistente)
+function leerCapacidades(estado) {
+    const r = {};
+    for (const c of (estado && estado.capabilityStates) || []) {
+        let o = c;
+        if (typeof c === "string") { try { o = JSON.parse(c); } catch { continue; } }
+        if (!o || !o.name) continue;
+        if (o.name === "powerState") r.encendido = String(o.value).toUpperCase() === "ON";
+        else if (o.name === "brightness") r.brillo = Number(o.value);
+        else if (o.name === "connectivity") r.conectado = String((o.value && o.value.value) || o.value).toUpperCase() === "OK";
+    }
+    return r;
+}
+
+async function estados() {
+    // solo lo que se enciende y apaga (ni los Echo ni las cámaras), en tandas pequeñas y a la vez: Amazon tarda
+    const lista = (await dispositivos()).filter(d => !/ALEXA_VOICE_ENABLED|CAMERA|SPEAKER/i.test(d.tipo || ""));
+    const ids = lista.map(d => d.id).filter(Boolean);
+    const res = {};
+    const tandas = [];
+    for (let i = 0; i < ids.length; i += 5) tandas.push(ids.slice(i, i + 5));
+    await Promise.all(tandas.map(async t => {
+        let r;
+        try { r = await p(alexa.querySmarthomeDevices, t, "APPLIANCE", 30000); } catch { return; }
+        for (const e of (r && r.deviceStates) || []) {
+            const id = (e.entity && e.entity.entityId) || "";
+            res[id] = leerCapacidades(e);
+        }
+        for (const e of (r && r.errors) || []) {
+            const id = (e.entity && e.entity.entityId) || "";
+            if (id) res[id] = { ...(res[id] || {}), conectado: false };
+        }
+    }));
+    return lista.map(d => ({ ...d, ...(res[d.id] || {}) }));
+}
+
+// ---- alarmas, temporizadores y recordatorios de los Echo
+async function avisos() {
+    const r = await p(alexa.getNotifications, false);
+    const nombres = {};
+    for (const d of Object.values(alexa.serialNumbers || {})) nombres[d.serialNumber] = d.accountName;
+    const lista = [];
+    for (const n of (r && r.notifications) || []) {
+        if (!n || !/^(Alarm|MusicAlarm|Timer|Reminder)$/.test(n.type || "")) continue;
+        const tipo = { Alarm: "alarma", MusicAlarm: "alarma", Timer: "temporizador", Reminder: "recordatorio" }[n.type] || n.type;
+        let cuando = null;
+        if (n.type === "Timer" && n.remainingTime != null) cuando = Date.now() + Number(n.remainingTime);
+        else if (n.alarmTime) cuando = Number(n.alarmTime);
+        else if (n.originalDate && n.originalTime) cuando = Date.parse(`${n.originalDate}T${n.originalTime}`);
+        lista.push({ tipo, echo: nombres[n.deviceSerialNumber] || "", cuando,
+                     fecha: n.originalDate || "", hora: (n.originalTime || "").slice(0, 5),
+                     repite: n.recurringPattern || n.rRuleData ? true : false,
+                     texto: n.reminderLabel || n.timerLabel || n.alarmLabel || "",
+                     luz: !!(n.extensibleAttribute && /LIGHTING/.test(n.extensibleAttribute.type || "")),
+                     activa: /^(ON|SNOOZED)$/i.test(n.status || "") });
+    }
+    lista.sort((a, b) => (b.activa - a.activa) || (a.cuando || 9e15) - (b.cuando || 9e15));
+    return lista;
+}
+
 async function texto(frase, echo) {
     const serie = echoElegido(echo);
     if (!serie) throw new Error("no encuentro ningún Echo en la cuenta");
@@ -209,6 +269,15 @@ http.createServer((req, res) => {
             }
             if (!listo) return responder(res, 503, { error: urlLogin ? "falta entrar en Amazon" : (error || "conectando"), login: urlLogin });
             if (req.url === "/dispositivos") return responder(res, 200, await dispositivos());
+            if (req.url === "/estados") return responder(res, 200, await estados());
+            if (req.url === "/avisos") return responder(res, 200, await avisos());
+            if (req.url === "/prueba_estado") {               // diagnóstico: forma de la respuesta, sin datos de la cuenta
+                const l = await dispositivos();
+                const r = await p(alexa.querySmarthomeDevices, l.slice(0, 2).map(d => d.id), "APPLIANCE", 20000);
+                const n = await p(alexa.getNotifications, false);
+                return responder(res, 200, { estado: r, avisos: ((n && n.notifications) || []).slice(0, 3)
+                    .map(x => Object.fromEntries(Object.entries(x).filter(([k]) => !/id$|serial|customer/i.test(k)))) });
+            }
             if (req.method !== "POST") return responder(res, 404, { error: "no existe" });
             if (req.url === "/accion") return responder(res, 200, await accion(j.id, j.accion, j.valor));
             if (req.url === "/texto") return responder(res, 200, await texto(j.texto, j.echo));

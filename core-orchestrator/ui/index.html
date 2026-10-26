@@ -118,6 +118,26 @@
   #saber .cifras b { display: block; font-family: var(--titulo); font-weight: 500; font-size: 22px; color: var(--clara); }
   #saber .cifras span { font-family: var(--titulo); font-size: 8.5px; letter-spacing: .2em; color: var(--tenue); }
 
+  /* ----- casa (Alexa): aparatos que se tocan para encender/apagar, y avisos de los Echo */
+  #casa { pointer-events: auto; }
+  #c-aparatos { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
+  .aparato { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 7px; padding: 4px 8px;
+             font-size: 14px; color: #cfeff6; cursor: pointer; user-select: none; white-space: nowrap;
+             background: linear-gradient(90deg, rgba(56,232,255,.06), rgba(56,232,255,0)); border-left: 2px solid rgba(56,232,255,.25);
+             transition: background .3s, border-color .3s; }
+  .aparato span { overflow: hidden; text-overflow: ellipsis; }
+  .aparato b { font-family: var(--titulo); font-weight: 500; font-size: 9px; letter-spacing: .15em; color: var(--tenue); }
+  .aparato .led { width: 8px; height: 8px; border-radius: 50%; background: rgba(79,133,147,.5); }
+  .aparato.on { background: linear-gradient(90deg, rgba(93,255,176,.16), rgba(93,255,176,0)); border-left-color: #5dffb0; color: var(--clara); }
+  .aparato.on .led { background: #5dffb0; box-shadow: 0 0 8px #5dffb0; }
+  .aparato.on b { color: #5dffb0; }
+  .aparato.sin .led { background: var(--acento2); box-shadow: 0 0 6px var(--acento2); }
+  .aparato.sin { opacity: .6; }
+  .aparato.espera { opacity: .5; }
+  .aparato:active { transform: scale(.98); }
+  #c-avisos .linea { white-space: normal; }
+  #c-avisos .linea small { color: var(--tenue); margin-left: 6px; font-size: 12px; }
+
   /* ----- subtítulos */
   #subtitulos { left: 50%; bottom: 6.5vh; transform: translateX(-50%); width: min(1040px, 84vw); text-align: center; }
   #usuario { font-size: 18px; letter-spacing: .04em; color: var(--tenue); min-height: 1.4em; transition: opacity .6s; }
@@ -172,6 +192,10 @@
   <section class="tarjeta" id="resultados"><h3><span id="res-titulo"></span><small>datos</small></h3><ol id="res-lista"></ol></section>
   <section class="tarjeta" id="saber"><h3>Memoria <small id="s-ultimo">aprendizaje</small></h3>
     <div class="cifras"><div><b id="s-hechos">0</b><span>SOBRE USTED</span></div><div><b id="s-notas">0</b><span>INVESTIGADO</span></div><div><b id="s-docs">0</b><span>DOCUMENTOS</span></div></div></section>
+  <section class="tarjeta" id="casa" style="display:none"><h3>Casa · Alexa <small id="c-resumen"></small></h3>
+    <div id="c-aparatos"></div></section>
+  <section class="tarjeta" id="echos" style="display:none"><h3>Echo <small id="e-resumen">alarmas</small></h3>
+    <div id="c-avisos"></div></section>
   <section class="tarjeta" id="registro"><h3>Registro <small>actividad</small></h3><div id="r-filas"></div></section>
 </div>
 
@@ -330,6 +354,65 @@ function ponerSaber(ev) {
   if (ev.ultimo) { $("s-ultimo").textContent = ev.ultimo; registrar("✦ Aprendido: " + ev.ultimo); }
 }
 
+// ---------------------------------------------------------------- casa (Alexa)
+const ICONO = { alarma: "ALARMA", temporizador: "TEMPOR.", recordatorio: "RECORD." };   // sin emojis: puede faltar la fuente
+function ponerCasa(ev) {
+  const caja = $("casa"), echos = $("echos");
+  if (!ev.conectada) {
+    caja.style.display = ""; echos.style.display = "none";
+    $("c-resumen").textContent = ev.aviso || "sin conexión"; $("c-aparatos").textContent = "";
+    return;
+  }
+  const lista = ev.aparatos || [];
+  caja.style.display = lista.length ? "" : "none";
+  const encendidos = lista.filter(a => a.encendido).length;
+  $("c-resumen").textContent = `${encendidos} de ${lista.length} encendidos`;
+  const cont = $("c-aparatos"); cont.textContent = "";
+  for (const a of lista) {
+    const d = document.createElement("div");
+    d.className = "aparato" + (a.encendido ? " on" : "") + (a.conectado === false ? " sin" : "");
+    d.title = a.nombre + (a.conectado === false ? " · no responde" : "") + (a.brillo != null ? ` · ${a.brillo}%` : "");
+    const led = document.createElement("i"); led.className = "led";
+    const n = document.createElement("span"); n.textContent = a.nombre;
+    const e = document.createElement("b");
+    e.textContent = a.conectado === false ? "—" : a.encendido == null ? "?" : a.encendido ? (a.brillo != null && a.brillo < 100 ? a.brillo + "%" : "ON") : "OFF";
+    d.append(led, n, e);
+    d.addEventListener("click", () => tocar(a, d));
+    cont.appendChild(d);
+  }
+  const av = ev.avisos || [];
+  echos.style.display = "";
+  $("e-resumen").textContent = av.length ? `${av.length} activos` : ((ev.echos || []).length + " altavoces");
+  const ca = $("c-avisos"); ca.textContent = "";
+  for (const x of av) {
+    const l = document.createElement("div"); l.className = "linea";
+    const i = document.createElement("i"); i.textContent = (ICONO[x.tipo] || "•") + " " + x.cuando; l.appendChild(i);
+    l.appendChild(document.createTextNode(x.texto));
+    if (x.echo) { const s = document.createElement("small"); s.textContent = x.echo; l.appendChild(s); }
+    ca.appendChild(l);
+  }
+  if (!av.length) {
+    const l = document.createElement("div"); l.className = "linea";
+    l.textContent = "Sin alarmas activas" + (ev.apagadas ? ` · ${ev.apagadas} desactivadas` : "");
+    ca.appendChild(l);
+  }
+}
+async function tocar(a, el) {
+  if (el.classList.contains("espera")) return;
+  const encender = !a.encendido;
+  el.classList.add("espera");
+  el.classList.toggle("on", encender); el.querySelector("b").textContent = encender ? "ON" : "OFF";
+  try {
+    const r = await fetch("/casa", { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" },
+                                     body: JSON.stringify({ id: a.id, encender }) });
+    const j = await r.json();
+    if (j.ok) { a.encendido = encender; registrar((encender ? "Encendido: " : "Apagado: ") + a.nombre); }
+    else { el.classList.toggle("on", !encender); el.querySelector("b").textContent = !encender ? "ON" : "OFF";
+           registrar(a.nombre + ": " + (j.motivo || "no responde"), "aviso"); }
+  } catch { registrar(a.nombre + ": sin enlace", "aviso"); }
+  el.classList.remove("espera");
+}
+
 function conectar() {
   const fuente = new EventSource("/eventos");
   fuente.onopen = () => { $("conexion").style.opacity = 0; $("d-red").className = "punto ok"; $("p-red").textContent = "núcleo"; };
@@ -343,6 +426,7 @@ function conectar() {
     else if (ev.tipo === "resultados") ponerResultados(ev);
     else if (ev.tipo === "panel") ponerPanel(ev);
     else if (ev.tipo === "saber") ponerSaber(ev);
+    else if (ev.tipo === "casa") ponerCasa(ev);
     else if (ev.tipo === "actividad") registrar(ev.texto, "aviso");
     else if (ev.tipo === "camara") { $("p-cam").textContent = ev.estado; punto("d-cam", ev.estado); $("panel").style.opacity = 1; }
     else if (ev.tipo === "cerebro") { $("p-cerebro").textContent = ev.estado; punto("d-cerebro", ev.estado); }

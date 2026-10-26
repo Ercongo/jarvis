@@ -187,7 +187,7 @@ def es_orden_fija(texto: str) -> bool:
             or re.search(r"\b(github|repositorio)\b|\b(ponlo|ponla|pon) en practica\b|\blo que (sabes|has aprendido)\b"
                          r"|\byoutube\b.*\b(resum\w*|aprend\w*|explica\w*)\b|\b(resum\w*|aprend\w*)\b.*\byoutube\b"
                          r"|\bresume\w* (el|los|este) videos?\b|\b(aprend\w*|investiga\w*) (tu solo|por tu cuenta|sola)\b", t) \
-            or re.search(r"\balexa\b|\b(por|en|del?) (el )?echo\b"
+            or re.search(r"\balexa\b|\b(por|en|del?) (el |los |las )?echos?\b"
                          r"|^(enciende|prende|apaga|desconecta|pon|sube|baja)\w* (el |la |los |las |todas las )?"
                          r"(luz|luces|lampara|bombilla|enchufe|regleta|ventilador|calefactor|estufa|radiador|tira)\b"
                          r"|^(enciende|enciendeme|prende|apaga|apagame)( el| la| los| las| mi)? \w+( \w+)?$", t) \
@@ -288,6 +288,8 @@ class Interfaz:
         self.cerebro: dict | None = None
         self.google_ev: dict | None = None
         self.saber_ev: dict | None = None
+        self.casa_ev: dict | None = None                # aparatos de Alexa y avisos de los Echo (para la pantalla)
+        self.casa = None                                # POST /casa: lo conecta Jarvis (encender/apagar al tocar)
         self.google = None                              # la cuenta de Google (para /google/conectar y /google)
         self.calendario = None                          # lo conecta Jarvis: la página /calendario lo usa
         self.asistente = None                           # el asistente de configuración (/asistente)
@@ -319,6 +321,8 @@ class Interfaz:
             self.google_ev = ev
         elif ev.get("tipo") == "saber":
             self.saber_ev = {k: v for k, v in ev.items() if k != "ultimo"}
+        elif ev.get("tipo") == "casa":
+            self.casa_ev = ev
         with self.lock:
             for q in self.clientes:
                 try:
@@ -403,6 +407,8 @@ class Interfaz:
                         q.put(ui.google_ev)
                     if ui.saber_ev:
                         q.put(ui.saber_ev)
+                    if ui.casa_ev:
+                        q.put(ui.casa_ev)
                     try:
                         while True:
                             try:
@@ -447,6 +453,16 @@ class Interfaz:
                         self._enviar(*r)
                     else:
                         self.send_error(404)
+                    return
+                if self.path == "/casa" and ui.casa and self.headers.get("X-Jarvis") == "1":
+                    # la pantalla: tocar un aparato de Alexa lo enciende o lo apaga
+                    n = int(self.headers.get("Content-Length") or 0)
+                    try:
+                        j = json.loads(self.rfile.read(min(n, 2000)) or b"{}")
+                        r = ui.casa(str(j.get("id") or ""), bool(j.get("encender")))
+                    except Exception as e:
+                        r = {"ok": False, "error": type(e).__name__}
+                    self._enviar(200, json.dumps(r, ensure_ascii=False).encode(), "application/json")
                     return
                 if self.path == "/orden" and ui.ordenar and self.headers.get("X-Jarvis") == "1":
                     # órdenes por escrito desde el propio portátil (pruebas: prueba_todo.sh). Sin voz.
@@ -986,7 +1002,9 @@ class Jarvis:
         from apis import Apis
         self.apis = Apis(log)                           # festivos, divisas, luz, gasolina, polen… (APIs gratis)
         from alexa import Alexa
-        self.alexa = Alexa(log, es_telegram=lambda: getattr(self._canal, "tg", False))   # luces y enchufes de Alexa
+        self.alexa = Alexa(log, es_telegram=lambda: getattr(self._canal, "tg", False), ui=self.ui)   # luces de Alexa
+        self.ui.casa = self.alexa.desde_pantalla
+        self.alexa.vigilar()                            # la pantalla muestra los aparatos y las alarmas de los Echo
         from visual import Visual                       # diagramas (Archify) y vídeos animados (HyperFrames)
         self.visual = Visual(self.cerebro, self.decir, log, avisar=self.tg.enviar,
                              enviar_documento=self.tg.enviar_documento,

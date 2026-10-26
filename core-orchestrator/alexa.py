@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import difflib
 import json
+import datetime as dt
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -56,9 +58,11 @@ def _pedir(ruta: str, datos: dict | None = None, timeout: float = 20) -> dict | 
 
 
 class Alexa:
-    def __init__(self, log: Callable[[str], None], es_telegram: Callable[[], bool] = lambda: False):
+    def __init__(self, log: Callable[[str], None], es_telegram: Callable[[], bool] = lambda: False, ui=None):
         self.log = log
         self.es_telegram = es_telegram
+        self.ui = ui
+        self._refrescar = threading.Event()
         self._disp: list[dict] = []
         self._disp_t = 0.0
         self._abierta = 0.0
@@ -129,6 +133,80 @@ class Alexa:
                 pass
         return Respuesta("Te he abierto la página de Amazon. Entra con tu cuenta de Amazon (la contraseña la escribes "
                          f"tú; yo no la veo). También puedes abrirla desde otro ordenador de casa: {url}")
+
+    # ---------------------------------------------------------------- la pantalla
+    def vigilar(self, cada: int = 60) -> None:
+        """Cada minuto (y justo después de encender o apagar algo) manda a la pantalla los aparatos con su estado
+        y las alarmas, temporizadores y recordatorios de los Echo."""
+        if not self.ui or not self.instalada:
+            return
+
+        def bucle():
+            time.sleep(20)
+            while True:
+                try:
+                    self.refrescar_pantalla()
+                except Exception as e:
+                    self.log(f"alexa: pantalla {e!r}")
+                self._refrescar.wait(cada)
+                self._refrescar.clear()
+        threading.Thread(target=bucle, daemon=True, name="alexa-pantalla").start()
+
+    def pedir_refresco(self, tras: float = 3) -> None:
+        threading.Timer(tras, self._refrescar.set).start()
+
+    def refrescar_pantalla(self) -> None:
+        est = self._estado()
+        if not est.get("listo"):
+            self.ui.enviar(tipo="casa", conectada=False,
+                           aviso="Di «conecta alexa»" if est.get("login") else "Conectando…")
+            return
+        r = _pedir("/estados", timeout=60)
+        if isinstance(r, list):
+            aparatos = [{"id": d["id"], "nombre": " ".join(str(d.get("nombre", "")).split()), "tipo": d.get("tipo", ""),
+                         "encendido": d.get("encendido"), "brillo": d.get("brillo"),
+                         "conectado": d.get("conectado", True)}
+                        for d in r if d.get("nombre")]
+            aparatos.sort(key=lambda d: normalizar(d["nombre"]))
+        else:
+            aparatos = (self.ui.casa_ev or {}).get("aparatos") or []
+        a = _pedir("/avisos", timeout=40)
+        avisos = [self._aviso(x) for x in a] if isinstance(a, list) else []
+        self.ui.enviar(tipo="casa", conectada=True, aparatos=aparatos,
+                       avisos=[x for x in avisos if x["activa"]][:8],
+                       apagadas=sum(1 for x in avisos if not x["activa"] and x["tipo"] != "temporizador"),
+                       echos=[e["nombre"] for e in est.get("echos", [])])
+
+    @staticmethod
+    def _aviso(x: dict) -> dict:
+        tipo = x.get("tipo") or "aviso"
+        cuando = ""
+        try:
+            if x.get("cuando"):
+                d = dt.datetime.fromtimestamp(x["cuando"] / 1000)
+                hoy = dt.date.today()
+                dia = ("hoy" if d.date() == hoy else "mañana" if d.date() == hoy + dt.timedelta(days=1)
+                       else d.strftime("%d/%m"))
+                cuando = f"{dia} {d:%H:%M}" if tipo != "temporizador" else f"a las {d:%H:%M}"
+            elif x.get("hora"):
+                cuando = x["hora"]
+        except (OverflowError, OSError, ValueError):
+            cuando = x.get("hora") or ""
+        if x.get("repite") and tipo == "alarma":
+            cuando = (x.get("hora") or cuando) + " · se repite"
+        texto = x.get("texto") or ("luz que se enciende" if x.get("luz") else tipo)
+        return {"tipo": tipo, "cuando": cuando, "texto": texto, "echo": x.get("echo") or "", "activa": bool(x.get("activa"))}
+
+    def desde_pantalla(self, ident: str, encender: bool) -> dict:
+        """Tocar un aparato en la pantalla."""
+        if not ident:
+            return {"ok": False}
+        r = _pedir("/accion", {"id": ident, "accion": "turnOn" if encender else "turnOff"}, timeout=30)
+        ok = isinstance(r, dict) and bool(r.get("ok"))
+        self.log(f"alexa: pantalla {'enciende' if encender else 'apaga'} {r.get('nombre', ident) if isinstance(r, dict) else ident}"
+                 f"{'' if ok else ' (falla)'}")
+        self.pedir_refresco(2)
+        return {"ok": ok, "motivo": (r or {}).get("motivo") or (r or {}).get("error") if not ok else ""}
 
     # ---------------------------------------------------------------- buscar el aparato
     def _buscar(self, nombre: str) -> tuple[list[dict], float]:
@@ -202,6 +280,10 @@ class Alexa:
             return Respuesta(f"Alexa tiene {len(nombres)} dispositivos: " + ", ".join(nombres[:25])
                              + (" y más." if len(nombres) > 25 else "."))
 
+        if re.search(r"\b(que|cuales|cuantas|cuantos|tengo|hay|dime|lista\w*)\b", t) and \
+                re.search(r"\b(alarmas?|temporizador\w*|recordatorios?|despertador)\b", t) and \
+                re.search(r"\b(alexa|echos?|despertador)\b", t):
+            return self._decir_avisos()
         m = re.search(r"^(?:dile|pidele|pregunta(?:le)?|manda(?:le)?|ordena(?:le)?) a alexa (?:que )?(.+)$", t)
         if m:
             return self._texto(con_original(texto, m.group(1)))
@@ -256,6 +338,7 @@ class Alexa:
             r = _pedir("/accion", {"id": d["id"], "accion": accion}, timeout=30)
             (hechos if isinstance(r, dict) and r.get("ok") else fallos).append(d["nombre"])
         self.log(f"alexa: {accion} {hechos} {('fallan ' + str(fallos)) if fallos else ''}")
+        self.pedir_refresco()
         if hechos and not fallos:
             que = hechos[0] if len(hechos) == 1 else f"{len(hechos)} dispositivos"
             return Respuesta(f"{'Encendido' if encender else 'Apagado'}: {que}.")
@@ -277,9 +360,31 @@ class Alexa:
                        timeout=30)
             if isinstance(r, dict) and r.get("ok"):
                 hechos.append(d["nombre"])
+        self.pedir_refresco()
         if not hechos:
             return Respuesta(f"{candidatos[0]['nombre']} no responde ahora mismo.")
         return Respuesta(f"Puesto al {valor} por ciento: {', '.join(hechos) if len(hechos) < 4 else str(len(hechos)) + ' luces'}.")
+
+    def _decir_avisos(self) -> Respuesta:
+        est = self._estado()
+        if not est.get("listo"):
+            return self._no_lista(est)
+        a = _pedir("/avisos", timeout=40)
+        if not isinstance(a, list):
+            return Respuesta("No consigo ver las alarmas de los Echo ahora mismo.")
+        avisos = [self._aviso(x) for x in a]
+        activas = [x for x in avisos if x["activa"]]
+        self.pedir_refresco(0.5)
+        if not activas:
+            n = sum(1 for x in avisos if x["tipo"] != "temporizador")
+            return Respuesta("Los Echo no tienen ninguna alarma ni recordatorio activo"
+                             + (f" (hay {n} desactivados)." if n else "."))
+        partes = []
+        for x in activas[:6]:
+            donde = f" en {x['echo']}" if x["echo"] else ""
+            que = "" if x["texto"] in ("alarma", "temporizador", "recordatorio") else f": {x['texto']}"
+            partes.append(f"{x['tipo']} {x['cuando']}{donde}{que}".strip())
+        return Respuesta(f"Tienes {len(activas)} activos. " + "; ".join(partes) + ".")
 
     def _texto(self, frase: str, echo: str | None = None) -> Respuesta:
         est = self._estado()
@@ -287,6 +392,7 @@ class Alexa:
             return self._no_lista(est)
         r = _pedir("/texto", {"texto": frase, "echo": echo}, timeout=30)
         if isinstance(r, dict) and r.get("ok"):
+            self.pedir_refresco(6)
             return Respuesta("Hecho, se lo he dicho a Alexa.")
         return Respuesta(f"No he podido hablar con Alexa: {(r or {}).get('error', 'sin respuesta')}.")
 
