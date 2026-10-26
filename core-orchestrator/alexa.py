@@ -66,6 +66,8 @@ class Alexa:
         self._disp: list[dict] = []
         self._disp_t = 0.0
         self._abierta = 0.0
+        self._reproductor = None                        # ffplay con una cámara en la pantalla
+        self._camara_echo = 0.0                         # cuándo se pidió una cámara al Echo Show
 
     # ---------------------------------------------------------------- estado
     @property
@@ -287,6 +289,14 @@ class Alexa:
         m = re.search(r"^(?:dile|pidele|pregunta(?:le)?|manda(?:le)?|ordena(?:le)?) a alexa (?:que )?(.+)$", t)
         if m:
             return self._texto(con_original(texto, m.group(1)))
+        # cámaras de casa: «enseña la cámara del salón», «pon la cámara de la oficina en el despertador», «quita la cámara»
+        m = re.search(r"^(?:muestra|ensena|pon|ponme|abre|ver|quiero ver|dejame ver)\w* (?:me )?(?:la |las )?camaras? "
+                      r"(?:del? |de la )?(\w+)(?: en (?:el |la )?(echo|despertador|pantalla|show|tele|television))?$", t)
+        if m and m.group(1) not in ("web", "portatil", "ordenador", "pc", "frontal"):
+            return self._ver_camara(m.group(1), m.group(2))
+        if re.search(r"^(quita|cierra|apaga|para|desactiva)\w* (la |las )?camaras?( del? \w+)?$", t) and \
+                (self._reproductor or time.time() - self._camara_echo < 1800):
+            return self._quitar_camara()
         # «pon música relajante en el echo del despacho», «para la música de alexa», «sube el volumen del echo»
         m = re.search(r"^((?:pon|ponme|reproduce|toca|para|pausa|deten|quita|sube|baja|continua|siguiente)\w*"
                       r"(?: .+?)?) (?:en|de|del) (?:el |la )?(?:echo|alexa)(?: (?:de |del |de la )?([\w ]+?))?$", t)
@@ -364,6 +374,75 @@ class Alexa:
         if not hechos:
             return Respuesta(f"{candidatos[0]['nombre']} no responde ahora mismo.")
         return Respuesta(f"Puesto al {valor} por ciento: {', '.join(hechos) if len(hechos) < 4 else str(len(hechos)) + ' luces'}.")
+
+    # ---------------------------------------------------------------- cámaras
+    def _camaras_locales(self) -> dict:
+        """~/jarvis/camaras.json (lo rellena el usuario; puede llevar la contraseña de la cámara, permisos 600):
+        {"salón": "rtsp://usuario:clave@192.168.1.50:554/ch0_0.264", "oficina": "rtsp://…"}"""
+        try:
+            d = json.loads((Path.home() / "jarvis/camaras.json").read_text(encoding="utf-8"))
+            return {normalizar(k): str(v) for k, v in d.items() if str(v).startswith(("rtsp://", "http://", "https://"))}
+        except (OSError, ValueError, AttributeError):
+            return {}
+
+    def _ver_camara(self, quien: str, donde: str | None) -> Respuesta:
+        quien = normalizar(quien)
+        if quien in ("despertador", "echo", "show") and donde is None:
+            return Respuesta("La cámara del Echo Show Despertador no se puede ver fuera de Amazon: solo desde la app "
+                             "Alexa del móvil (Comunicar → Drop In) o desde otro Echo Show. Puedo enseñar en el "
+                             "Despertador las cámaras del salón o de la oficina.")
+        locales = self._camaras_locales()
+        url = next((u for k, u in locales.items() if quien in k or k in quien), None)
+        if url and donde in (None, "pantalla", "tele", "television"):
+            import shutil
+            import subprocess
+            self._quitar_local()
+            jugador = shutil.which("ffplay")
+            if not jugador:
+                return Respuesta("Me falta ffplay para enseñar la cámara.")
+            cmd = [jugador, "-loglevel", "error", "-fs", "-an", "-fflags", "nobuffer", "-flags", "low_delay",
+                   "-window_title", f"Cámara {quien}"] + (["-rtsp_transport", "tcp"] if url.startswith("rtsp") else []) + [url]
+            try:
+                self._reproductor = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                                     stdin=subprocess.DEVNULL, start_new_session=True)
+            except OSError as e:
+                return Respuesta(f"No he podido abrir la cámara: {e}")
+            self.log(f"alexa: cámara {quien} en la pantalla")            # sin la dirección: lleva la contraseña
+            return Respuesta(f"Ahí tienes la cámara {quien}. Dime «quita la cámara» para cerrarla.")
+        # sin dirección local: se la pide Alexa al Echo con pantalla
+        est = self._estado()
+        if not est.get("listo"):
+            return self._no_lista(est)
+        nombre = next((d["nombre"] for d in self._camaras_alexa() if quien in normalizar(d["nombre"])), quien)
+        r = _pedir("/texto", {"texto": f"muestra la cámara {nombre}", "echo": "Despertador"}, timeout=30)
+        if isinstance(r, dict) and r.get("ok"):
+            self._camara_echo = time.time()
+            extra = "" if donde else (" Para verla también en esta pantalla, configúrala una vez con "
+                                      "bash ~/jarvis/configurar_camaras.sh.")
+            return Respuesta(f"La pongo en el Echo Show Despertador.{extra}")
+        return Respuesta(f"No he podido pedírselo a Alexa: {(r or {}).get('error', 'sin respuesta')}.")
+
+    def _camaras_alexa(self) -> list[dict]:
+        try:
+            r = _pedir("/dispositivos", timeout=40)
+        except Exception:
+            return []
+        return [d for d in r if re.search(r"CAMERA", d.get("tipo", ""), re.I)] if isinstance(r, list) else []
+
+    def _quitar_local(self) -> bool:
+        p, self._reproductor = self._reproductor, None
+        if p and p.poll() is None:
+            p.terminate()
+            return True
+        return False
+
+    def _quitar_camara(self) -> Respuesta:
+        hecho = self._quitar_local()
+        if time.time() - self._camara_echo < 1800:
+            _pedir("/texto", {"texto": "para", "echo": "Despertador"}, timeout=30)
+            self._camara_echo = 0.0
+            hecho = True
+        return Respuesta("Cámara cerrada." if hecho else "No había ninguna cámara abierta.")
 
     def _decir_avisos(self) -> Respuesta:
         est = self._estado()

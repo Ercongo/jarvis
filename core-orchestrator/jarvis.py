@@ -187,7 +187,7 @@ def es_orden_fija(texto: str) -> bool:
             or re.search(r"\b(github|repositorio)\b|\b(ponlo|ponla|pon) en practica\b|\blo que (sabes|has aprendido)\b"
                          r"|\byoutube\b.*\b(resum\w*|aprend\w*|explica\w*)\b|\b(resum\w*|aprend\w*)\b.*\byoutube\b"
                          r"|\bresume\w* (el|los|este) videos?\b|\b(aprend\w*|investiga\w*) (tu solo|por tu cuenta|sola)\b", t) \
-            or re.search(r"\balexa\b|\b(por|en|del?) (el |los |las )?echos?\b"
+            or re.search(r"\balexa\b|\b(por|en|del?) (el |los |las )?echos?\b|\bcamaras? (del?|de la) (salon|oficina|despertador)\b|^(quita|cierra)\w* (la )?camara$"
                          r"|^(enciende|prende|apaga|desconecta|pon|sube|baja)\w* (el |la |los |las |todas las )?"
                          r"(luz|luces|lampara|bombilla|enchufe|regleta|ventilador|calefactor|estufa|radiador|tira)\b"
                          r"|^(enciende|enciendeme|prende|apaga|apagame)( el| la| los| las| mi)? \w+( \w+)?$", t) \
