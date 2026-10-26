@@ -63,9 +63,9 @@ chroot "$MONTAJE" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin 
     export DEBIAN_FRONTEND=noninteractive
     falta() { echo "$1" >> /var/log/paquetes_omitidos.txt; echo "  (omitido: $1)"; }
     # lo que se vuelve a intentar sale de la lista de omitidos (si vuelve a fallar, se apunta otra vez)
-    sed -i -E "/^(ollama|modelo qwen|libredwg|omniroute|paquetes de python|archify|hyperframes|chrome de|gsap)/d" /var/log/paquetes_omitidos.txt 2>/dev/null || true
+    sed -i -E "/^(ollama|modelo qwen|libredwg|omniroute|paquetes de python|archify|hyperframes|chrome de|gsap|restic)/d" /var/log/paquetes_omitidos.txt 2>/dev/null || true
     apt-get update -qq
-    apt-get install -y -qq zstd xz-utils curl ca-certificates build-essential pkg-config git >/dev/null
+    apt-get install -y -qq zstd xz-utils curl ca-certificates build-essential pkg-config git bzip2 >/dev/null
 
     echo "▸ IA local de reserva: Ollama + qwen2.5:1.5b"
     if [ -x /usr/local/bin/ollama ] || [ -x /usr/bin/ollama ] || \
@@ -137,6 +137,19 @@ chroot "$MONTAJE" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin 
         falta "hyperframes (sin node)"
     fi
     curl -fsSL -o $H/gsap.min.js https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js || falta "gsap"
+    if [ ! -x $H/restic ]; then                        # copias de seguridad cifradas (copias.py)
+        T=$(mktemp -d)
+        V=$(curl -fsSL https://api.github.com/repos/restic/restic/releases/latest | python3 -c "import json,sys; print(json.load(sys.stdin)[\"tag_name\"].lstrip(\"v\"))")
+        A=restic_${V}_linux_amd64.bz2
+        if [ -n "$V" ] && curl -fsSL -o $T/$A https://github.com/restic/restic/releases/download/v$V/$A \
+           && curl -fsSL -o $T/S https://github.com/restic/restic/releases/download/v$V/SHA256SUMS \
+           && (cd $T && grep " $A\$" S | sha256sum -c - >/dev/null) && bunzip2 -c $T/$A > $H/restic; then
+            chmod 755 $H/restic; echo "  restic $V"
+        else
+            falta "restic"
+        fi
+        rm -rf $T
+    fi
     chmod -R a+rX $H
     echo "  $(du -sh $H | cut -f1) en $H"
 
@@ -144,14 +157,14 @@ chroot "$MONTAJE" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin 
     true
 ' 2>&1 | tee -a "$LOG"
 
-paso "Alexa y SearXNG: los instala cada persona (sin sudo) al entrar"
+paso "Alexa, SearXNG y copias: los instala cada persona (sin sudo) al entrar"
 mkdir -p "$J/alexa" && cp "$REPO"/scripts/alexa/* "$J/alexa/"
-echo "  bash /opt/jarvis/instalar_alexa.sh   ·   bash /opt/jarvis/instalar_searxng.sh" | tee -a "$LOG"
+echo "  bash /opt/jarvis/instalar_alexa.sh · bash /opt/jarvis/instalar_searxng.sh · bash /opt/jarvis/instalar_copias.sh" | tee -a "$LOG"
 
 paso "Comprobación"
 for p in /usr/local/bin/ollama /usr/bin/ollama /usr/local/bin/dwg2dxf /opt/omniroute/bin/node /opt/omniroute/bin/hyperframes \
          /opt/jarvis-herramientas/archify/archify/bin/archify.mjs /opt/jarvis-herramientas/gsap.min.js \
-         /opt/jarvis/instalar_alexa.sh /opt/jarvis/instalar_searxng.sh /usr/bin/vlc /usr/bin/librecad /usr/bin/firefox; do
+         /opt/jarvis-herramientas/restic /opt/jarvis/instalar_alexa.sh /opt/jarvis/instalar_searxng.sh /usr/bin/vlc /usr/bin/librecad /usr/bin/firefox; do
     if [ -e "$MONTAJE$p" ]; then echo "  ✔ $p"; fi
 done | tee -a "$LOG"
 ls "$MONTAJE/usr/share/ollama/.ollama/models/manifests" -R 2>/dev/null | grep -q "1.5b" && echo "  ✔ modelo qwen2.5:1.5b" | tee -a "$LOG"

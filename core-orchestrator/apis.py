@@ -126,7 +126,7 @@ class Apis:
         t = re.sub(r"^(?:por favor|oye|venga|jarvis|dime|sabes)[ ,]+", "", t)
         try:
             for regla in (self._festivos, self._divisas, self._cripto, self._luz, self._carburantes, self._aire,
-                          self._sol, self._wikipedia, self._iss, self._ayuda):
+                          self._sol, self._wikipedia, self._iss, self._velocidad, self._ayuda):
                 r = regla(t, peticion)
                 if r is not None:
                     return r
@@ -359,6 +359,38 @@ class Apis:
         frases = re.split(r"(?<=[.!?])\s+", extracto)
         return Respuesta(f"Según la Wikipedia, {' '.join(frases[:3])}" if extracto else f"Encuentro «{titulo}», pero sin resumen.")
 
+    # ------------------------------------------------------------ velocidad de internet (Cloudflare, sin claves)
+    def _velocidad(self, t: str, peticion: str) -> Respuesta | None:
+        if not re.search(r"\b(velocidad|test|prueba)\b.*\b(internet|conexion|wifi|fibra|red)\b"
+                         r"|\bcomo (va|anda|esta) (el |la )?(internet|conexion|wifi|fibra)\b|\bspeed ?test\b", t):
+            return None
+        import time as _t
+        import urllib.request as _u
+        base = "https://speed.cloudflare.com"
+        ping = []
+        for _ in range(4):
+            t0 = _t.perf_counter()
+            _u.urlopen(_u.Request(f"{base}/__down?bytes=0", headers={"User-Agent": "Athena"}), timeout=10).read()
+            ping.append((_t.perf_counter() - t0) * 1000)
+        bajada = []
+        for tam in (2_000_000, 10_000_000, 25_000_000):
+            t0 = _t.perf_counter()
+            n = len(_u.urlopen(_u.Request(f"{base}/__down?bytes={tam}", headers={"User-Agent": "Athena"}), timeout=60).read())
+            dur = _t.perf_counter() - t0
+            bajada.append(n * 8 / dur / 1e6)
+            if dur > 8:                                   # conexión lenta: no seguir gastando
+                break
+        datos = b"0" * 5_000_000
+        t0 = _t.perf_counter()
+        _u.urlopen(_u.Request(f"{base}/__up", data=datos, headers={"User-Agent": "Athena",
+                                                                    "Content-Type": "application/octet-stream"}),
+                   timeout=60).read()
+        subida = len(datos) * 8 / (_t.perf_counter() - t0) / 1e6
+        b, p = max(bajada), sorted(ping)[len(ping) // 2]
+        valor = "muy buena" if b >= 100 else "buena" if b >= 30 else "justa" if b >= 10 else "lenta"
+        return Respuesta(f"Internet va {valor}: {num(b, 0)} megas de bajada, {num(subida, 0)} de subida y "
+                         f"{num(p, 0)} milisegundos de respuesta.")
+
     # ------------------------------------------------------------ estación espacial
     def _iss(self, t: str, peticion: str) -> Respuesta | None:
         if not re.search(r"\b(estacion espacial|la iss)\b", t) or not re.search(r"\b(donde|por donde|pasa|esta)\b", t):
@@ -381,4 +413,5 @@ class Apis:
             return None
         return Respuesta("Puedo consultarte al momento: festivos, cambio de divisas, criptomonedas, el precio de la luz "
                          "por horas, la gasolinera más barata, la calidad del aire y el polen, a qué hora amanece y "
-                         "anochece, la Wikipedia y dónde está la estación espacial. Además del tiempo y las noticias.")
+                         "anochece, la Wikipedia, dónde está la estación espacial y la velocidad de internet. Además del tiempo "
+                         "y las noticias.")

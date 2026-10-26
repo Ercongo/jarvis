@@ -148,6 +148,10 @@ ORDENES_CONOCIDAS = (
     "CASA (ALEXA): enciende/apaga la luz del <sitio>, el enchufe de <x>, el ventilador…; apaga todas las luces; pon la "
     "luz del <sitio> al <n> por ciento; qué dispositivos tiene alexa; dile a alexa que <x>; di por el echo que <x>; "
     "conecta/desconecta alexa. "
+    "RADIO Y PÓDCAST: pon la radio / pon Cadena SER / pon los 40 [en el echo]; pon el pódcast <x>; pon el último "
+    "episodio de <x>; busca pódcast de <tema>; para la radio. "
+    "COPIAS: haz una copia de seguridad [en el disco usb]; cuándo fue la última copia. "
+    "RED: cómo va internet / test de velocidad. "
     "DIAGRAMAS Y VÍDEOS ANIMADOS: haz un esquema/diagrama/mapa mental de <tema o proceso>; haz un vídeo animado sobre "
     "<tema> [sin voz]."
 )
@@ -187,6 +191,9 @@ def es_orden_fija(texto: str) -> bool:
             or re.search(r"\b(github|repositorio)\b|\b(ponlo|ponla|pon) en practica\b|\blo que (sabes|has aprendido)\b"
                          r"|\byoutube\b.*\b(resum\w*|aprend\w*|explica\w*)\b|\b(resum\w*|aprend\w*)\b.*\byoutube\b"
                          r"|\bresume\w* (el|los|este) videos?\b|\b(aprend\w*|investiga\w*) (tu solo|por tu cuenta|sola)\b", t) \
+            or re.search(r"\b(radio|emisora|podcast|pódcast|episodio)\b|^(pon|ponme|sintoniza)\w* (la )?(cadena ser|los ?40|"
+                         r"la cope|cope|onda cero|rne|cadena dial|cadena 100|europa fm|kiss fm|rock fm|esradio)$|\bcopias? de seguridad\b|\b(ultima|cuantas) copias?\b"
+                         r"|\b(velocidad|test)\b.*\b(internet|conexion|wifi|fibra)\b|\bcomo (va|anda) (el |la )?(internet|wifi|fibra)\b", t) \
             or re.search(r"\balexa\b|\b(por|en|del?) (el |los |las )?echos?\b|\bcamaras? (del?|de la) (salon|oficina|despertador)\b|^(quita|cierra)\w* (la )?camara$"
                          r"|^(enciende|prende|apaga|desconecta|pon|sube|baja)\w* (el |la |los |las |todas las )?"
                          r"(luz|luces|lampara|bombilla|enchufe|regleta|ventilador|calefactor|estufa|radiador|tira)\b"
@@ -1005,6 +1012,10 @@ class Jarvis:
         self.alexa = Alexa(log, es_telegram=lambda: getattr(self._canal, "tg", False), ui=self.ui)   # luces de Alexa
         self.ui.casa = self.alexa.desde_pantalla
         self.alexa.vigilar()                            # la pantalla muestra los aparatos y las alarmas de los Echo
+        from radio import Radio
+        self.radio = Radio(log, alexa=self.alexa)       # emisoras (Radio Browser) y pódcast
+        from copias import Copias
+        self.copias = Copias(log, decir=self.decir)     # copias de seguridad cifradas (restic)
         from visual import Visual                       # diagramas (Archify) y vídeos animados (HyperFrames)
         self.visual = Visual(self.cerebro, self.decir, log, avisar=self.tg.enviar,
                              enviar_documento=self.tg.enviar_documento,
@@ -1678,7 +1689,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.alexa, "alexa"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.visual, "visual"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.alexa, "alexa"), (self.radio, "radio"), (self.copias, "copias"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.visual, "visual"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),
