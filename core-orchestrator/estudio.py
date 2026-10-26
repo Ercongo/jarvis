@@ -434,7 +434,8 @@ class Estudio:
         try:
             self._actividad("Estudio · imagen con FLUX")
             t0 = time.time()
-            r = self._hf(HF_FLUX, prompt_en[:1500], float(semilla or 0), semilla is None, float(w), float(h), 4.0,
+            # desde el 25 oct el espacio rechaza los decimales («AppError TypeError»): números enteros
+            r = self._hf(HF_FLUX, prompt_en[:1500], int(semilla or 0), semilla is None, int(w), int(h), 4,
                          api="/infer", intentos=1)
             origen = _ruta_gradio(r)
             from PIL import Image

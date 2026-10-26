@@ -55,3 +55,18 @@ elif [ -f "$XS" ] && grep -q "JARVIS-SIN-ACELERACION" "$XS"; then
     sed -i '/# JARVIS-SIN-ACELERACION/,/# FIN-JARVIS-SIN-ACELERACION/d' "$XS"
 fi
 
+
+# La sesión arranca con startx (~/.xinitrc), que NO lee ~/.xsessionrc: sin esto lo de arriba no servía y la gráfica
+# se volvió a colgar el 26 oct (radeon «ring 3 stalled», pantalla congelada). Además el compositor de Xfce dibuja
+# con 3D: se apaga.
+XI="$HOME/.xinitrc"
+if [ "$SIN_ACELERACION" = "1" ]; then
+    if [ -f "$XI" ] && ! grep -q "xsessionrc" "$XI"; then
+        sed -i '1a [ -f "$HOME/.xsessionrc" ] \&\& . "$HOME/.xsessionrc"   # JARVIS: sin 3D en la gráfica radeon' "$XI"
+    fi
+    if command -v xfconf-query >/dev/null && xfconf-query -c xfwm4 -p /general/use_compositing >/dev/null 2>&1; then
+        xfconf-query -c xfwm4 -p /general/use_compositing -s false 2>/dev/null || true
+    fi
+    XW="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+    [ -f "$XW" ] && sed -i 's|name="use_compositing" type="bool" value="true"|name="use_compositing" type="bool" value="false"|' "$XW"
+fi

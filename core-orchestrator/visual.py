@@ -32,8 +32,15 @@ from herramientas import carpeta_usuario, lanzar, normalizar
 from sistema import Respuesta
 
 HOME = Path.home()
-ARCHIFY = HOME / ".local/share/archify/archify/bin/archify.mjs"
-GSAP = HOME / ".local/share/hyperframes/gsap.min.js"
+COMUN = Path("/opt/jarvis-herramientas")           # en el disco portátil: lo mismo, para todos los usuarios
+
+
+def _primero(*rutas: Path) -> Path:
+    return next((r for r in rutas if r.exists()), rutas[0])
+
+
+ARCHIFY = _primero(HOME / ".local/share/archify/archify/bin/archify.mjs", COMUN / "archify/archify/bin/archify.mjs")
+GSAP = _primero(HOME / ".local/share/hyperframes/gsap.min.js", COMUN / "gsap.min.js")
 TRABAJO = HOME / ".cache/jarvis_visual"
 
 
@@ -45,7 +52,7 @@ def _node() -> str | None:
 
 
 def _hyperframes() -> str | None:
-    for c in (HOME / ".local/node/bin/hyperframes", HOME / ".local/bin/hyperframes"):
+    for c in (HOME / ".local/node/bin/hyperframes", HOME / ".local/bin/hyperframes", Path("/opt/omniroute/bin/hyperframes")):
         if c.exists():
             return str(c)
     return shutil.which("hyperframes")
@@ -55,7 +62,8 @@ def _chrome() -> str | None:
     """Un Chrome sin ventana para la comprobación de Archify (el que trae HyperFrames, si está)."""
     for patron in (".cache/hyperframes/**/chrome-headless-shell", ".cache/puppeteer/**/chrome-headless-shell",
                    ".cache/ms-playwright/**/chrome", ".cache/hyperframes/**/chrome"):
-        for f in sorted(glob.glob(str(HOME / patron), recursive=True), reverse=True):
+        for f in sorted(glob.glob(str(HOME / patron), recursive=True) +
+                        glob.glob(str(COMUN / "home" / patron), recursive=True), reverse=True):
             if os.access(f, os.X_OK) and os.path.isfile(f):
                 return f
     return shutil.which("chromium") or shutil.which("google-chrome")

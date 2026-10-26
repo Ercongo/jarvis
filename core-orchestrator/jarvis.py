@@ -145,6 +145,9 @@ ORDENES_CONOCIDAS = (
     "a qué hora amanece/anochece; busca en la wikipedia <x>; dónde está la estación espacial; qué datos puedes consultar. "
     "IA LOCAL: abre/cierra el chat web (Open WebUI); crea una imagen en local de <x> (ComfyUI, sin internet); abre la "
     "caja de herramientas de linux (Linutil); qué herramientas de ia locales tienes. "
+    "CASA (ALEXA): enciende/apaga la luz del <sitio>, el enchufe de <x>, el ventilador…; apaga todas las luces; pon la "
+    "luz del <sitio> al <n> por ciento; qué dispositivos tiene alexa; dile a alexa que <x>; di por el echo que <x>; "
+    "conecta/desconecta alexa. "
     "DIAGRAMAS Y VÍDEOS ANIMADOS: haz un esquema/diagrama/mapa mental de <tema o proceso>; haz un vídeo animado sobre "
     "<tema> [sin voz]."
 )
@@ -169,6 +172,9 @@ def es_orden_fija(texto: str) -> bool:
     # verdad); el cerebro de reserva contestaba «no tengo el contenido» o se inventaba la suma
     if re.search(r"\b(excel|hoja de calculo|word|pdf|plano|presentacion|powerpoint|omni ?rout\w*|omniru\w*)\b", t) \
             or re.search(r"\b(usa|piensa con) (a )?groq\b", t) \
+            or re.search(r"\b(apag|reinic)\w* (el |la )?(pc|ordenador|portatil|equipo)\b"
+                         r"|\b(videos?|repositorios|tiktoks?)\b.*\b(aprend\w*|investig\w*)\b"
+                         r"|\b(aprend\w*|investig\w*)\b.*\b(videos?|repositorios|tiktoks?)\b", t) \
             or re.search(r"\b(diagrama|esquema|mapa mental|mapa conceptual|organigrama|infografia|herramientas visuales)\b"
                          r"|\b(video|animacion)\b.*\b(animad\w*|explicativo|con texto|con animaciones)\b", t) \
             or re.search(r"\b(chat web|open ?web ?ui|comfy ?ui|linutil|winutil|caja de herramientas de linux)\b"
@@ -181,6 +187,9 @@ def es_orden_fija(texto: str) -> bool:
             or re.search(r"\b(github|repositorio)\b|\b(ponlo|ponla|pon) en practica\b|\blo que (sabes|has aprendido)\b"
                          r"|\byoutube\b.*\b(resum\w*|aprend\w*|explica\w*)\b|\b(resum\w*|aprend\w*)\b.*\byoutube\b"
                          r"|\bresume\w* (el|los|este) videos?\b|\b(aprend\w*|investiga\w*) (tu solo|por tu cuenta|sola)\b", t) \
+            or re.search(r"\balexa\b|\b(di|anuncia)\w* (por|en) el echo\b"
+                         r"|^(enciende|prende|apaga|desconecta|pon|sube|baja)\w* (el |la |los |las |todas las )?"
+                         r"(luz|luces|lampara|bombilla|enchufe|regleta|ventilador|calefactor|estufa|radiador|tira)\b", t) \
             or re.search(r"\b(sonido|audio)\b.*\b(por|monitor|hdmi|auriculares|altavo\w+|jack|revisa|sale|oye)\b"
                          r"|\b(revisa|arregla|comprueba)\w* (el )?(audio|sonido)\b|\bno (se oye|suena)\b", t):
         return True
@@ -975,6 +984,8 @@ class Jarvis:
         self.audio = Audio(log)                         # por dónde sale el sonido (HDMI, jack, altavoces) y revisarlo
         from apis import Apis
         self.apis = Apis(log)                           # festivos, divisas, luz, gasolina, polen… (APIs gratis)
+        from alexa import Alexa
+        self.alexa = Alexa(log, es_telegram=lambda: getattr(self._canal, "tg", False))   # luces y enchufes de Alexa
         from visual import Visual                       # diagramas (Archify) y vídeos animados (HyperFrames)
         self.visual = Visual(self.cerebro, self.decir, log, avisar=self.tg.enviar,
                              enviar_documento=self.tg.enviar_documento,
@@ -1538,6 +1549,12 @@ class Jarvis:
                         r2 = self.procesar(entrada, profundidad=2)       # con tus palabras tal cual
                         if not no_sabe(r2):
                             r = r2
+                    if no_sabe(r) and re.match(r"(investiga|aprende|estudia|averigua|informate|documentate)\w*\s+\S",
+                                                normalizar(orden)):
+                        # «investiga repositorios de github sobre IA», «aprende cómo…»: que lo investigue saber
+                        tema = re.sub(r"^\S+\s+(?:sobre |acerca de |de |del |de la )?", "", orden).strip(" .")
+                        rs = self.saber.investigar(tema, orden, True)
+                        r = {"texto": rs.texto, "susurro": None, "despues": None, "archivo": None, "origen": "saber"}
                     if no_sabe(r):
                         fallos += 1
                         log(f"cerebro: orden que no sé hacer: {orden!r}")
@@ -1642,7 +1659,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.visual, "visual"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.alexa, "alexa"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.visual, "visual"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),

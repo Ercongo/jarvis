@@ -3,7 +3,9 @@
 #   - pone al día el asistente de /opt/jarvis (código y scripts; los entornos de Python se conservan);
 #   - IA local de reserva: Ollama + qwen2.5:1.5b (antes fallaba porque faltaba zstd);
 #   - LibreDWG compilado (para leer planos DWG: Ubuntu 26.04 no lo trae);
-#   - OmniRoute preparado en /opt/omniroute (cada persona lo configura al entrar).
+#   - OmniRoute preparado en /opt/omniroute (cada persona lo configura al entrar);
+#   - paquetes de Python nuevos, Archify, HyperFrames (con su Chrome) y GSAP en /opt/jarvis-herramientas;
+#   - los instaladores de Alexa y SearXNG (cada persona los lanza sin sudo).
 #
 #   sudo bash portable/completar_disco.sh /dev/sdX          (pide escribir SEGUIR; no borra nada)
 set -euo pipefail
@@ -61,9 +63,9 @@ chroot "$MONTAJE" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin 
     export DEBIAN_FRONTEND=noninteractive
     falta() { echo "$1" >> /var/log/paquetes_omitidos.txt; echo "  (omitido: $1)"; }
     # lo que se vuelve a intentar sale de la lista de omitidos (si vuelve a fallar, se apunta otra vez)
-    sed -i -E "/^(ollama|modelo qwen|libredwg|omniroute)/d" /var/log/paquetes_omitidos.txt 2>/dev/null || true
+    sed -i -E "/^(ollama|modelo qwen|libredwg|omniroute|paquetes de python|archify|hyperframes|chrome de|gsap)/d" /var/log/paquetes_omitidos.txt 2>/dev/null || true
     apt-get update -qq
-    apt-get install -y -qq zstd xz-utils curl ca-certificates build-essential pkg-config >/dev/null
+    apt-get install -y -qq zstd xz-utils curl ca-certificates build-essential pkg-config git >/dev/null
 
     echo "▸ IA local de reserva: Ollama + qwen2.5:1.5b"
     if [ -x /usr/local/bin/ollama ] || [ -x /usr/bin/ollama ] || \
@@ -112,12 +114,44 @@ chroot "$MONTAJE" /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin 
         fi
         rm -rf $T
     fi
+    echo "▸ Paquetes de Python nuevos del asistente (YouTube, documentos, aprender…)"
+    if /opt/jarvis/venv/bin/pip install -q -r /opt/jarvis/requirements.txt >/tmp/pip.log 2>&1; then
+        echo "  al día: $(/opt/jarvis/venv/bin/pip list 2>/dev/null | grep -ciE "youtube-transcript-api|firecrawl-anydoc") de 2 nuevos"
+    else
+        tail -3 /tmp/pip.log; falta "paquetes de python nuevos"
+    fi
+
+    echo "▸ Herramientas visuales para todos los usuarios (/opt/jarvis-herramientas)"
+    H=/opt/jarvis-herramientas; mkdir -p $H/home
+    if [ -d $H/archify/.git ]; then git -C $H/archify pull -q --ff-only || true
+    else git clone -q --depth 1 https://github.com/tt-a1i/archify $H/archify || falta "archify"; fi
+    if [ -x /opt/omniroute/bin/node ]; then
+        export PATH=/opt/omniroute/bin:$PATH HYPERFRAMES_SKIP_SKILLS=1 DO_NOT_TRACK=1
+        if npm install -g --no-audit --no-fund hyperframes@0.8.200 >/tmp/hf.log 2>&1; then
+            HOME=$H/home hyperframes telemetry disable >/dev/null 2>&1 || true
+            HOME=$H/home hyperframes browser ensure 2>&1 | tail -1 || falta "chrome de hyperframes"
+        else
+            tail -3 /tmp/hf.log; falta "hyperframes"
+        fi
+    else
+        falta "hyperframes (sin node)"
+    fi
+    curl -fsSL -o $H/gsap.min.js https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js || falta "gsap"
+    chmod -R a+rX $H
+    echo "  $(du -sh $H | cut -f1) en $H"
+
     apt-get clean
     true
 ' 2>&1 | tee -a "$LOG"
 
+paso "Alexa y SearXNG: los instala cada persona (sin sudo) al entrar"
+mkdir -p "$J/alexa" && cp "$REPO"/scripts/alexa/* "$J/alexa/"
+echo "  bash /opt/jarvis/instalar_alexa.sh   ·   bash /opt/jarvis/instalar_searxng.sh" | tee -a "$LOG"
+
 paso "Comprobación"
-for p in /usr/local/bin/ollama /usr/bin/ollama /usr/local/bin/dwg2dxf /opt/omniroute/bin/node /usr/bin/vlc /usr/bin/librecad /usr/bin/firefox; do
+for p in /usr/local/bin/ollama /usr/bin/ollama /usr/local/bin/dwg2dxf /opt/omniroute/bin/node /opt/omniroute/bin/hyperframes \
+         /opt/jarvis-herramientas/archify/archify/bin/archify.mjs /opt/jarvis-herramientas/gsap.min.js \
+         /opt/jarvis/instalar_alexa.sh /opt/jarvis/instalar_searxng.sh /usr/bin/vlc /usr/bin/librecad /usr/bin/firefox; do
     if [ -e "$MONTAJE$p" ]; then echo "  ✔ $p"; fi
 done | tee -a "$LOG"
 ls "$MONTAJE/usr/share/ollama/.ollama/models/manifests" -R 2>/dev/null | grep -q "1.5b" && echo "  ✔ modelo qwen2.5:1.5b" | tee -a "$LOG"

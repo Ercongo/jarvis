@@ -379,7 +379,36 @@ def corto(p: Path) -> str:
 
 # =============================================================== internet
 
+SEARXNG = "http://127.0.0.1:8888"
+
+
+def _buscar_searxng(consulta: str, maximo: int) -> list[dict]:
+    """SearXNG en este equipo (si está instalado): pregunta a varios buscadores a la vez, sin cuentas ni rastreo."""
+    url = f"{SEARXNG}/search?" + urllib.parse.urlencode({"q": consulta, "format": "json", "language": "es-ES",
+                                                          "safesearch": 0})
+    req = urllib.request.Request(url, headers={"X-Real-IP": "127.0.0.1", "User-Agent": "Athena"})
+    with urllib.request.urlopen(req, timeout=12) as r:
+        d = json.loads(r.read())
+    vistos, res = set(), []
+    for x in d.get("results") or []:
+        u = x.get("url") or ""
+        if not u or u in vistos:
+            continue
+        vistos.add(u)
+        res.append({"titulo": x.get("title", ""), "url": u, "texto": x.get("content", "")})
+        if len(res) >= maximo:
+            break
+    return res
+
+
 def buscar_web(consulta: str, maximo: int = 4) -> list[dict]:
+    if (Path.home() / ".config/systemd/user/searxng.service").exists():
+        try:
+            res = _buscar_searxng(consulta, maximo)
+            if res:
+                return res
+        except Exception:
+            pass                                    # apagado o sin respuesta: DuckDuckGo como siempre
     try:
         from ddgs import DDGS
     except ImportError:

@@ -34,6 +34,7 @@ import difflib
 import html
 import json
 import math
+import random
 import re
 import threading
 import time
@@ -232,6 +233,9 @@ irrelevantes. Devuelve SOLO JSON: {"temas": [{"tema": "…", "resumen": "…", "
 de las noticias usadas). Si no hay nada nuevo de un tema, no lo incluyas."""
 
 
+VACIA = re.compile(r"informaci[oó]n no disponible|sin informaci[oó]n|no (he )?encontrado nada|no hay datos", re.I)
+
+
 def json_de(texto: str) -> dict:
     m = re.search(r"\{.*\}", texto or "", re.S)
     if not m:
@@ -379,10 +383,38 @@ class Saber:
         nombres = [n for k, n in (("web", "internet"), ("github", "GitHub"), ("youtube", "YouTube")) if k in o]
         return nombres[0] if len(nombres) == 1 else ", ".join(nombres[:-1]) + " y " + nombres[-1]
 
+    # siglas que los buscadores confunden («IA» encuentra «iA Fonts» o «iam»)
+    SIGLAS = {"ia": ("inteligencia artificial", "artificial intelligence"),
+              "ai": ("inteligencia artificial", "artificial intelligence"),
+              "ml": ("aprendizaje automático", "machine learning"), "llm": ("modelos de lenguaje", "llm"),
+              "iot": ("internet de las cosas", "iot")}
+
+    def _ampliar(self, tema: str, ingles: bool = False) -> str:
+        t = tema.strip()
+        par = self.SIGLAS.get(normalizar(t).strip(" .?¿!¡"))
+        if par:
+            return par[1 if ingles else 0]
+        return re.sub(r"\b(IA|ia)\b", "artificial intelligence" if ingles else "inteligencia artificial", t)
+
+    def _en_ingles(self, consulta: str) -> str:
+        """En GitHub casi todo está en inglés: la petición pasada a 2-5 palabras clave."""
+        consulta = self._ampliar(consulta, True)
+        if not self.ia or not re.search(r"[a-záéíóúñ]{3,}", consulta.lower()) or \
+                not re.search(r"[áéíóúñ]|\b(de|del|en|y|la|el|los|las|para|con|sobre|que|cómo|como)\b", consulta.lower()):
+            return consulta
+        try:
+            return self._ia("Convert the request into 2-5 English keywords for a GitHub repository search. "
+                            "Reply with the keywords only, no quotes.", consulta, max_tokens=40,
+                            json_=False, timeout=15, ligero=True).strip().strip('"')[:80] or consulta
+        except Exception:
+            return consulta
+
     def _de_github(self, tema: str, n: int = 2) -> list[dict]:
         res = []
         try:
-            for r in fuentes.github_buscar(tema, 4)[:n]:
+            busqueda = self._en_ingles(tema)
+            repos = fuentes.github_buscar(busqueda, 4) or (fuentes.github_buscar(tema, 4) if busqueda != tema else [])
+            for r in repos[:n]:
                 try:
                     info = fuentes.github_repo(r["nombre"], 9000)
                 except Exception:
@@ -397,7 +429,7 @@ class Saber:
     def _de_youtube(self, tema: str, n: int = 2) -> list[dict]:
         res = []
         try:
-            videos = fuentes.youtube_buscar(tema, 6)
+            videos = fuentes.youtube_buscar(self._ampliar(tema), 6)
         except Exception as e:
             self.log(f"saber: youtube {e!r}")
             return res
@@ -416,7 +448,8 @@ class Saber:
     def _investigar(self, tema: str, peticion: str, a_fondo: bool,
                     origenes: set[str] | None = None) -> tuple[str, Path]:
         origenes = self._origenes(tema, a_fondo, origenes)
-        consultas = [tema] + ([f"{tema} explicación", f"{tema} 2026"] if a_fondo else [f"{tema} qué es"])
+        base = self._ampliar(tema)
+        consultas = [base] + ([f"{base} explicación", f"{base} 2026"] if a_fondo else [f"{base} qué es"])
         con_nex = bool(a_fondo and self.nex and self.nex.activo)     # Nex lee mucho más de una vez
         vistos, encontradas = set(), []
         for c in (consultas if "web" in origenes else []):
@@ -470,6 +503,9 @@ class Saber:
             return ((voz + " " if voz else "") + f"No he encontrado información fiable sobre {tema}, así que no "
                     "guardo nada. Si me das más datos, como la web o la ciudad, lo intento otra vez."), None
         titulo = str(spec.get("titulo") or tema).strip()[:80]
+        if VACIA.search(f"{titulo} {str(spec.get('nota') or '')[:300]}"):        # no guardar notas vacías
+            return (f"No he encontrado información fiable sobre {tema}, así que no guardo nada. Si me das más "
+                    "datos, lo intento otra vez."), None
         ruta = NOTAS / f"{slug(titulo)}.md"
         hoy = dt.date.today()
         cuerpo = (f"# {titulo}\n\n_Investigado el {hoy.day}/{hoy.month}/{hoy.year} · encargo: {peticion}_\n\n"
@@ -492,6 +528,8 @@ class Saber:
 
     # ---------- GitHub
     def _guardar_nota(self, titulo: str, cuerpo_md: str, peticion: str, fuentes_: list[tuple[str, str]]) -> Path:
+        if VACIA.search(f"{titulo} {cuerpo_md[:300]}"):                  # no guardar notas vacías
+            raise RuntimeError("no ha salido nada fiable que guardar")
         ruta = NOTAS / f"{slug(titulo)}.md"
         hoy = dt.date.today()
         cuerpo = (f"# {titulo}\n\n_Aprendido el {hoy.day}/{hoy.month}/{hoy.year} · encargo: {peticion}_\n\n"
@@ -523,14 +561,7 @@ class Saber:
         return Respuesta(aviso)
 
     def buscar_github(self, consulta: str) -> Respuesta:
-        busqueda = consulta
-        if self.ia and re.search(r"[a-záéíóúñ]{3,}", consulta.lower()):
-            try:                                        # en GitHub casi todo está en inglés
-                busqueda = self._ia("Convert the request into 2-5 English keywords for a GitHub repository search. "
-                                    "Reply with the keywords only, no quotes.", consulta, max_tokens=40,
-                                    json_=False, timeout=15, ligero=True).strip().strip('"')[:80] or consulta
-            except Exception:
-                busqueda = consulta
+        busqueda = self._en_ingles(consulta)
         try:
             repos = fuentes.github_buscar(busqueda, 5) or (fuentes.github_buscar(consulta, 5) if busqueda != consulta else [])
         except Exception as e:
@@ -669,6 +700,59 @@ class Saber:
             return
         lista.append({"tema": tema, "fecha": dt.date.today().isoformat()})
         guardar_config(curiosidades=lista[-30:])
+
+    INSTR_TEMAS = ("Eres el asistente personal del usuario. Con lo que sabes de él (sus datos y lo que ha preguntado) "
+                   "propón 2 temas concretos y útiles para aprender HOY, que le sirvan a él o a ti para ayudarle mejor. "
+                   "Español de España. Devuelve SOLO JSON: {\"temas\": [\"…\", \"…\"]}")
+
+    TEMAS_UTILES = ["novedades de inteligencia artificial esta semana", "trucos de Ubuntu para principiantes",
+                    "cómo ahorrar en la factura de la luz", "seguridad de contraseñas y estafas por internet",
+                    "recetas fáciles de cocina española", "cuidado del olivo según la estación"]
+
+    def aprender_ahora(self, peticion: str, origenes: set[str]) -> Respuesta:
+        """«Busca vídeos y aprende de ellos», «aprende lo que te sea útil»: elige los temas (los que tiene apuntados o,
+        si no hay, según lo que sabe del usuario) y los investiga ya, en segundo plano."""
+        if not self.ia:
+            return Respuesta("Para aprender necesito la IA en la nube, y ahora no está disponible.")
+        tg = self.es_telegram()
+
+        def hilo():
+            temas = [c["tema"] for c in (leer_config().get("curiosidades") or [])][-2:]
+            if not temas:
+                datos = "; ".join(d.get("dato", "") for d in leer_memoria()[-25:])
+                notas = ", ".join(p.read_text(encoding="utf-8").splitlines()[0].lstrip("# ")
+                                  for p in sorted(NOTAS.glob("*.md"))[-10:])
+                try:
+                    d = self._ia(self.INSTR_TEMAS, f"Pedido: {peticion}\nDatos del usuario: {datos}\n"
+                                 f"Ya sabes de: {notas or 'nada'}", max_tokens=200, timeout=30)
+                    lista = d.get("temas") or next((v for v in d.values() if isinstance(v, list)), [])
+                    temas = [str(x.get("tema") if isinstance(x, dict) else x).strip() for x in lista][:2]
+                    temas = [t for t in temas if 2 < len(t) < 120]
+                except Exception as e:
+                    self.log(f"saber: temas {e!r}")
+                    temas = []
+            if not temas:                               # nunca volver con las manos vacías
+                temas = random.sample(self.TEMAS_UTILES, 2)
+            self.log(f"saber: aprendo ahora sobre {temas}")
+            hechos = []
+            for tema in temas:
+                try:
+                    texto, nota = self._investigar(tema, f"aprende sobre {tema}", True,
+                                                   origenes | ({"github"} if TECNICO.search(normalizar(tema)) and
+                                                               "github" not in origenes and len(origenes) > 1 else set()))
+                    if nota:
+                        hechos.append(tema)
+                except Exception as e:
+                    self.log(f"saber: aprender ahora {tema!r}: {e!r}")
+            cfg = leer_config()
+            guardar_config(curiosidades=[c for c in (cfg.get("curiosidades") or []) if c["tema"] not in temas])
+            texto = ("He aprendido sobre " + " y ".join(hechos) + ". Pregúntame «qué sabes de…» cuando quieras, o dime "
+                     "«ponlo en práctica»." if hechos else "No he conseguido aprender nada nuevo ahora; prueba a darme un tema.")
+            (self.avisar if tg else self.decir)(texto)
+        threading.Thread(target=hilo, daemon=True).start()
+        donde = self._donde(origenes)
+        return Respuesta(f"Vale. Elijo un par de temas útiles para ti y los aprendo en {donde}. Tardaré unos minutos; "
+                         "te cuento lo que aprenda.")
 
     def aprender_solo(self, maximo: int = 2) -> list[str]:
         """Por la noche: investiga (internet + YouTube) hasta «maximo» temas por los que preguntó y que no sabe."""
@@ -1012,8 +1096,44 @@ class Saber:
                 texto += " Tengo pendiente: " + ", ".join(pend[-5:]) + "."
             return Respuesta(texto)
 
+        # pedidos amplios de aprender (los de voz suelen venir así): «revisa repositorios de github sobre IA y
+        # aprende de ellos», «busca vídeos de youtube sobre X», «busca vídeos y aprende de ellos», «aprende tú»
+        vb = r"(?:investiga|investigar|busca|buscar|buscame|revisa|revisar|mira|mirar|encuentra|explora|aprende|estudia)\w*"
+        if re.search(r"\btik ?toks?\b", t) and re.search(r"\b(aprend\w*|investig\w*|resum\w*|estudi\w*)\b", t):
+            return Respuesta("De TikTok no puedo leer lo que dicen los vídeos; de YouTube sí, porque tienen subtítulos. "
+                             "Dime el tema y lo aprendo de YouTube: por ejemplo, aprende de youtube recetas fáciles.")
+        m = re.match(r"^" + vb + r"\s+(?:los |unos |algunos )?(?:repositorios|proyectos|programas)\s+(?:de|en)\s+github"
+                     r"(?:\s+(?:sobre|de|que traten de|acerca de|para)\s+(.+?))?(?:\s+y\s+(aprende|estudia|resume)\w*.*)?$", t)
+        if m:
+            if not m.group(1):
+                return self.aprender_ahora(peticion, {"github"})
+            tema = (con_tildes(peticion, m.group(1)) or m.group(1)).strip(" .")
+            if m.group(2):
+                return self.investigar(tema, peticion, True, {"github"})
+            return self.buscar_github(tema)
+        m = re.match(r"^" + vb + r"\s+(?:los |unos |algunos )?videos?(?:\s+(?:de|en)\s+youtube)?"
+                     r"(?:\s+(?:sobre|de|que expliquen|acerca de|para)\s+(.+?))?(?:\s+y\s+(?:aprende|estudia|resume)\w*.*)?$", t)
+        if m and not re.search(r"\b(pon|ponme|reproduce)\b", t):
+            if not m.group(1) or re.match(r"^(ellos|eso|esos|lo que|que (sean|te))", m.group(1)):
+                return self.aprender_ahora(peticion, {"youtube"})
+            return self.estudiar_videos((con_tildes(peticion, m.group(1)) or m.group(1)).strip(" ."), peticion)
+        if re.search(r"\b(aprende|aprendas|aprender|investiga)\w*\b", t) and re.search(
+                r"\b(tu solo|tu sola|por tu cuenta|de tu interes|que te sirva|que te sean? utiles?|lo que quieras|"
+                r"de ellos|sobre ellos|sobre esos|de esos|cosas nuevas|lo que te interese|quiero que aprendas|"
+                r"interesantes?|utiles?)\b", t) \
+                and not re.search(r"\b(deja|no)\b", t) and not re.search(r"\bpor tu cuenta$", t.split(" y ")[0]):
+            origenes = {k for k, w in (("web", r"internet|la web"), ("github", "github"), ("youtube", "youtube|videos?"))
+                        if re.search(w, t)} or {"web", "youtube"}
+            mt = re.search(r"\bsobre\s+(?!ellos|esos|esas|ellas|eso)(.+?)(?:\s+y\s+(?:aprende|estudia|resume)\w*.*)?$", t)
+            if mt and len(mt.group(1)) > 1:
+                tema = (con_tildes(peticion, mt.group(1)) or mt.group(1)).strip(" .")
+                return self.investigar(tema, peticion, True, origenes)
+            return self.aprender_ahora(peticion, origenes)
+        if re.fullmatch(vb + r"(?: en (?:internet|github|youtube))?", t):
+            return Respuesta("¿Sobre qué tema? Dímelo así: aprende sobre la aerotermia, o busca en github un lector de PDF.")
+
         # GitHub
-        m = re.match(r"^(?:busca|buscame|mira|encuentra|encuentrame)\s+(?:en\s+)?github\s+(?:a ver si hay\s+)?"
+        m = re.match(r"^(?:busca|buscar|buscame|mira|encuentra|encuentrame)\s+(?:en\s+)?github\s+(?:a ver si hay\s+)?"
                      r"(?:algun\w* |un |una |unos |unas )?(?:repositorio\w*|proyecto\w*|programa\w*|herramienta\w*|apps?)?"
                      r"\s*(?:de|para|que|sobre|con|acerca de)?\s*(.+)$", t) or \
             re.match(r"^(?:busca|buscame|encuentra(?:me)?)\s+(?:algun\w* |un |una )?(?:repositorio\w* |proyecto\w* )?"
@@ -1113,6 +1233,11 @@ class Saber:
             a_fondo = bool(re.search(r"\b(a fondo|en profundidad|todo lo que puedas|bien)\b", t)) \
                 or bool(re.match(r"^(?:aprende|empapate|instruyete)", t)) or bool(origenes)
             return self.investigar(tema, peticion, a_fondo, origenes)
+
+        m = re.match(r"^(?:investiga|investigar|averigua|informate|documentate)\s+(?!(?:mis|mi)\b)(.{3,120})$", t)
+        if m:
+            tema = (con_tildes(peticion, m.group(1)) or m.group(1)).strip(" .")
+            return self.investigar(tema, peticion, False)
 
         if re.search(r"\bque (has investigado|investigaciones tienes|temas has investigado)\b", t):
             notas = sorted(NOTAS.glob("*.md"), key=lambda p: -p.stat().st_mtime)
