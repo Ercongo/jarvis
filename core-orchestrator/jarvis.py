@@ -187,9 +187,10 @@ def es_orden_fija(texto: str) -> bool:
             or re.search(r"\b(github|repositorio)\b|\b(ponlo|ponla|pon) en practica\b|\blo que (sabes|has aprendido)\b"
                          r"|\byoutube\b.*\b(resum\w*|aprend\w*|explica\w*)\b|\b(resum\w*|aprend\w*)\b.*\byoutube\b"
                          r"|\bresume\w* (el|los|este) videos?\b|\b(aprend\w*|investiga\w*) (tu solo|por tu cuenta|sola)\b", t) \
-            or re.search(r"\balexa\b|\b(di|anuncia)\w* (por|en) el echo\b"
+            or re.search(r"\balexa\b|\b(por|en|del?) (el )?echo\b"
                          r"|^(enciende|prende|apaga|desconecta|pon|sube|baja)\w* (el |la |los |las |todas las )?"
-                         r"(luz|luces|lampara|bombilla|enchufe|regleta|ventilador|calefactor|estufa|radiador|tira)\b", t) \
+                         r"(luz|luces|lampara|bombilla|enchufe|regleta|ventilador|calefactor|estufa|radiador|tira)\b"
+                         r"|^(enciende|enciendeme|prende|apaga|apagame)( el| la| los| las| mi)? \w+( \w+)?$", t) \
             or re.search(r"\b(sonido|audio)\b.*\b(por|monitor|hdmi|auriculares|altavo\w+|jack|revisa|sale|oye)\b"
                          r"|\b(revisa|arregla|comprueba)\w* (el )?(audio|sonido)\b|\bno (se oye|suena)\b", t):
         return True

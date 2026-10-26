@@ -36,7 +36,7 @@ DEL_PC = re.compile(r"\b(pc|ordenador|portatil|equipo|pantalla|monitor|camara|mi
                     r"sonido|volumen|video|chat web|navegador|telegram|modo|alarma|temporizador|ia)\b")
 APARATO = re.compile(r"\b(luz|luces|lampara|lamparas|bombilla|bombillas|foco|focos|led|leds|tira|enchufe|enchufes|"
                      r"regleta|ventilador|calefactor|estufa|radiador|aire acondicionado|purificador|humidificador|"
-                     r"persiana|persianas|cafetera|interruptor|plafon|aplique|termostato)\b")
+                     r"persiana|persianas|cafetera|interruptor|plafon|aplique|termostato|tele|television|tv|termo)\b")
 ENCENDER = r"enciende|enciendeme|prende|prendeme|conecta|activa"
 APAGAR = r"apaga|apagame|desconecta|desactiva"
 ARTICULO = r"(?:el |la |los |las |mi |mis )?"
@@ -82,7 +82,10 @@ class Alexa:
         except Exception:
             return self._disp
         if isinstance(r, list):
-            self._disp, self._disp_t = r, time.time()
+            # solo lo que se enciende y apaga: fuera los propios Echo y las cámaras; nombres sin espacios sobrantes
+            r = [{**d, "nombre": " ".join(str(d.get("nombre", "")).split())} for d in r
+                 if not re.search(r"ALEXA_VOICE_ENABLED|CAMERA|SPEAKER", d.get("tipo", ""), re.I)]
+            self._disp, self._disp_t = [d for d in r if d["nombre"]], time.time()
         return self._disp
 
     def _no_lista(self, est: dict) -> Respuesta:
@@ -132,6 +135,7 @@ class Alexa:
         """Los aparatos que encajan con lo dicho («la luz del salón» → «Luz salón»), y lo seguro que es."""
         n = normalizar(nombre).strip(" .")
         n = re.sub(r"^(el|la|los|las|mi|mis) ", "", n)
+        n = re.sub(r"\b(tele|tv)\b", "television", n)
         lista = self._dispositivos()
         if not lista:
             return [], 0.0
@@ -201,6 +205,11 @@ class Alexa:
         m = re.search(r"^(?:dile|pidele|pregunta(?:le)?|manda(?:le)?|ordena(?:le)?) a alexa (?:que )?(.+)$", t)
         if m:
             return self._texto(con_original(texto, m.group(1)))
+        # «pon música relajante en el echo del despacho», «para la música de alexa», «sube el volumen del echo»
+        m = re.search(r"^((?:pon|ponme|reproduce|toca|para|pausa|deten|quita|sube|baja|continua|siguiente)\w*"
+                      r"(?: .+?)?) (?:en|de|del) (?:el |la )?(?:echo|alexa)(?: (?:de |del |de la )?([\w ]+?))?$", t)
+        if m:
+            return self._texto(con_original(texto, m.group(1)), (m.group(2) or "").strip() or None)
         m = re.search(r"^(?:di|anuncia|avisa|habla)\w* (?:por|en) (?:el |la )?(?:echo|alexa)(?: de (\w+))? (?:que )?(.+)$", t)
         if m:
             return self._decir(con_original(texto, m.group(2)), m.group(1))
@@ -272,11 +281,11 @@ class Alexa:
             return Respuesta(f"{candidatos[0]['nombre']} no responde ahora mismo.")
         return Respuesta(f"Puesto al {valor} por ciento: {', '.join(hechos) if len(hechos) < 4 else str(len(hechos)) + ' luces'}.")
 
-    def _texto(self, frase: str) -> Respuesta:
+    def _texto(self, frase: str, echo: str | None = None) -> Respuesta:
         est = self._estado()
         if not est.get("listo"):
             return self._no_lista(est)
-        r = _pedir("/texto", {"texto": frase}, timeout=30)
+        r = _pedir("/texto", {"texto": frase, "echo": echo}, timeout=30)
         if isinstance(r, dict) and r.get("ok"):
             return Respuesta("Hecho, se lo he dicho a Alexa.")
         return Respuesta(f"No he podido hablar con Alexa: {(r or {}).get('error', 'sin respuesta')}.")
