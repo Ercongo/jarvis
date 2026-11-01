@@ -51,7 +51,7 @@ SUBIR = {   # dónde se publica a mano en cada red (mientras no haya conexión o
 }
 DESCARGAS = [Path.home() / "Descargas", Path.home() / "Downloads"]
 WEBS_CLIP = {"deevid": ("DeeVid", "https://deevid.ai/es/model/h3"), "opengen": ("OpenGen", "https://opengen.ai/video"),
-             "viggle": ("Viggle", "https://viggle.ai")}
+             "viggle": ("Viggle", "https://viggle.ai"), "sjinn": ("SJinn", "https://sjinn.ai/")}
 VOZ_DESC = ["Young adult woman from Spain, about 24, warm slightly husky mid-low voice, confident and playful, dry "
             "sarcastic humor, natural Castilian Spanish accent, relaxed pace, like a gamer streamer talking to her chat",
             "Young adult woman from Madrid, clear bright voice with a teasing tone, energetic but not shouting, quick "
@@ -388,7 +388,7 @@ class Nexus:
         return elegir
 
     def _ordenes_material(self, t: str) -> Respuesta | None:
-        m = re.search(r"\b(prepara|haz|pide)\w* (?:un |otro )?clip(?: (?:en|con) (deevid|opengen|open gen|viggle))?", t)
+        m = re.search(r"\b(prepara|haz|pide)\w* (?:un |otro )?clip(?: (?:en|con) (deevid|opengen|open gen|viggle|sjinn))?", t)
         if m:
             web = (m.group(2) or "deevid").replace(" ", "")
             fotos, _ = self._material()
@@ -448,6 +448,32 @@ class Nexus:
             self._diario("ajuste", f"Voz del personaje: la {m.group(1)}", ruta=str(NX / "voces" / f"voz{m.group(1)}_muestra.wav"))
             return Respuesta(f"Hecho: desde ahora {self.e['id'].get('nombre', 'el personaje')} habla con la voz "
                              f"{m.group(1)} en los vídeos.")
+        m = re.search(r"\b(?:crea|haz|hazle|genera)\w* (\w+ )?fotos? nuevas?\b", t)
+        if m:
+            n = numero(m.group(1) or "") or 3
+            self._en_hilo("fotos nuevas", lambda: self.crear_fotos(min(n, 6)))
+            return Respuesta(f"Hago {min(n, 6)} fotos nuevas de Asuka a partir de las suyas; tardo unos minutos.")
+        if re.search(r"\banima\w* (una |sus )?fotos?\b", t):
+            self._en_hilo("animar foto", self.animar_foto)
+            return Respuesta("Animo una de sus fotos (unos minutos); va a sus clips.")
+        m = re.search(r"\b(?:video|clip) con sjinn(?: sobre| de)? (.+)$", t)
+        if m:
+            self._en_hilo("vídeo con SJinn", lambda: self.video_sjinn(m.group(1)))
+            return Respuesta("Encargo el vídeo a SJinn (gasta créditos de tu cuenta); te aviso cuando esté.")
+        if re.search(r"\b(publica|sube)\w* (ya|ahora|lo de hoy|las de hoy)\b", t):
+            hechas = self.publicar_pendientes() if self.redes_conectadas() else []
+            return Respuesta(("Publicado: " + "; ".join(hechas)) if hechas else
+                             ("No hay nada pendiente cuya hora haya llegado en las redes conectadas." if
+                              self.redes_conectadas() else "Aún no hay redes conectadas para publicar sola: "
+                              "bash ~/jarvis/configurar_redes_nexus.sh y «nexus, conecta YouTube»."))
+        if re.search(r"\b(no publiques sola|para de publicar|publicacion manual)\b", t):
+            self.e["auto_publicar"] = False
+            self._guardar()
+            return Respuesta("Vale: preparo las publicaciones pero no las subo yo; las subes tú o me dices «publica ya».")
+        if re.search(r"\b(publica sola|publicacion automatica)\b", t):
+            self.e["auto_publicar"] = True
+            self._guardar()
+            return Respuesta("Hecho: publico sola a su hora en las redes conectadas.")
         if re.search(r"\bconecta\w* (el |su )?youtube\b", t):
             if not self.youtube:
                 return Respuesta("No tengo el módulo de YouTube.")
@@ -557,6 +583,17 @@ class Nexus:
     def accion(self, j: dict) -> dict:
         """Botones de la página: publicado / descartar / publicar en YouTube / responder un comentario."""
         tipo = j.get("tipo")
+        if tipo == "publicar":
+            c = next((x for x in self.e.get("cola", []) if x["id"] == j.get("id")), None)
+            if not c:
+                return {"ok": False, "error": "no está en la cola"}
+            if j.get("texto"):
+                c["texto"] = str(j["texto"])[:2200]
+            try:
+                self._publicar(c)
+            except Exception as ex:
+                return {"ok": False, "error": str(ex)[:200]}
+            return {"ok": True, "url": c.get("url", "")}
         if tipo in ("hecho", "descartar", "youtube"):
             c = next((x for x in self.e.get("cola", []) if x["id"] == j.get("id")), None)
             if not c:
@@ -641,6 +678,128 @@ class Nexus:
         partes.append("Foto, portada y bio del resto de redes: en la página de Asuka, con botón de descargar y copiar.")
         return " ".join(partes)
 
+    def redes_conectadas(self) -> list[str]:
+        try:
+            from nexus_publicar import conectadas
+            red = conectadas()
+        except Exception:
+            red = []
+        if self.youtube and self.youtube.conectado:
+            red.append("youtube")
+        return red
+
+    def _publicar(self, c: dict) -> None:
+        """Publica un elemento de la cola por la API oficial de su red y lo apunta."""
+        ruta = NX / c["archivo"]
+        if c["red"] == "youtube":
+            r = self.youtube.subir(ruta, c.get("titulo", "")[:100], c["texto"],
+                                   [h.lstrip("#") for h in re.findall(r"#\w+", c["texto"])])
+        else:
+            from nexus_publicar import publicar
+            r = publicar(c["red"], c.get("tipo", "foto"), ruta, c["texto"], c.get("titulo", ""))
+        c.update(estado="publicado", url=r.get("url", ""), publicado_t=time.strftime("%Y-%m-%d %H:%M"))
+        if c.get("tipo") == "video" and "video" in c:
+            self.e["videos"][c["video"]].setdefault("publicado", {})[c["red"]] = c["url"] or "sí"
+        self._guardar()
+        self._diario("publicado", f"Publicado en {REDES[c['red']]['nombre']}: {c['texto'][:120]}",
+                     ruta=str(ruta), url=c.get("url", ""))
+
+    def publicar_pendientes(self) -> list[str]:
+        """Lo de hoy cuya hora ya ha llegado, en las redes conectadas (si la publicación automática está activa)."""
+        if not self.e.get("auto_publicar", True):
+            return []
+        hechas, ahora = [], time.strftime("%H:%M")
+        redes = self.redes_conectadas()
+        for c in self.e.get("cola", []):
+            if (c.get("estado") == "pendiente" and c["red"] in redes and c.get("dia") == time.strftime("%Y-%m-%d")
+                    and (c.get("hora") or "00:00") <= ahora and not c.get("error_t")):
+                try:
+                    self._publicar(c)
+                    hechas.append(f"{REDES[c['red']]['nombre']}: {c.get('url', '')}")
+                except Exception as ex:
+                    c["error"], c["error_t"] = str(ex)[:200], time.time()
+                    self._guardar()
+                    self.log(f"nexus: no se ha podido publicar en {c['red']}: {ex}")
+        return hechas
+
+    def crear_fotos(self, n: int = 3) -> str:
+        """Fotos nuevas de Asuka a partir de las suyas (FLUX Kontext / Qwen-Image-Edit, gratis con cupo diario)."""
+        from nexus_crear import SinCupo, editar_foto
+        fotos, _ = self._material()
+        if not fotos:
+            return "No tengo fotos aprobadas de Asuka de las que partir."
+        b = self.e["id"].get("biblia", {})
+        ideas = self.e.get("ideas_fotos") or []
+        if len(ideas) < n:
+            d = self._ia("Eres directora de fotografía de una creadora de contenido. Devuelve SOLO JSON.",
+                         f"Creadora: {b.get('resumen', BASE)} Temas: {b.get('pilares', '')}. Propón {n + 2} fotos nuevas "
+                         "para sus redes, distintas entre sí (lugar, ropa, momento del día, acción), que pegarían en "
+                         "Instagram ahora. Nada sexual ni de marcas. Para cada una: \"instruccion_en\" (en inglés, qué "
+                         "cambiar de la foto: lugar, ropa, pose, luz) y \"escena\" (3-5 palabras en inglés para "
+                         "clasificarla, ej. 'cafe coffee winter street'). JSON: {\"fotos\": [{\"instruccion_en\": "
+                         "\"…\", \"escena\": \"…\"}]}", max_tokens=1200)
+            ideas += d.get("fotos", [])
+        ind = self._indice(REF)
+        hechas = []
+        for idea in list(ideas)[:n]:
+            base = random.choice(fotos)
+            numeros = [int(re.sub(r"\D", "", r["archivo"]) or 0) for r in ind]
+            nombre = f"ref{max(numeros + [0]) + 1:02d}.jpg"
+            try:
+                motor = editar_foto(base["ruta"], idea["instruccion_en"], REF / nombre, self.log)
+            except SinCupo:
+                break                                       # mañana se sigue con las ideas que quedan
+            except Exception as ex:
+                self.log(f"nexus: foto nueva: {ex}")
+                ideas.remove(idea)
+                continue
+            ideas.remove(idea)
+            ind.append({"archivo": nombre, "escena": idea.get("escena", base["escena"]), "apta": "publica",
+                        "origen": motor, "de": base["archivo"], "nueva": time.strftime("%Y-%m-%d")})
+            self._guardar_indice(REF, ind)
+            hechas.append(nombre)
+            self._diario("material", f"Foto nueva ({motor}): {idea.get('escena', '')}", ruta=str(REF / nombre))
+            self.enviar_foto(str(REF / nombre), f"Foto nueva de Asuka: {idea.get('escena', '')}")
+        self.e["ideas_fotos"] = ideas
+        self._guardar()
+        if not hechas:
+            return ("Hoy ya no queda cupo gratis en los editores de imagen de Hugging Face; me guardo las ideas y las "
+                    "hago mañana.")
+        return (f"He hecho {len(hechas)} fotos nuevas de Asuka a partir de las suyas (en su página y en Telegram). Si "
+                "alguna no te gusta: «nexus, quita la foto N».")
+
+    def animar_foto(self) -> str:
+        """Un clip de 5 s con movimiento a partir de una de sus fotos (Wan en Hugging Face, gratis)."""
+        fotos, _ = self._material()
+        if not (fotos and self.estudio):
+            return "No tengo fotos o el estudio de vídeo."
+        f = random.choice(fotos)
+        destino = CLIPS / f"wan-{int(time.time())}.mp4"
+        CLIPS.mkdir(parents=True, exist_ok=True)
+        self.estudio.clip(f"the woman in the photo, {f['escena']}, natural movement, smiles at camera, cinematic",
+                          f["ruta"], destino, forzar="wan")
+        ind = self._indice(CLIPS)
+        ind.append({"archivo": destino.name, "escena": f["escena"], "apta": "publica", "origen": "Wan (sin marca)",
+                    "foto": f["archivo"], "fecha": time.strftime("%Y-%m-%d")})
+        self._guardar_indice(CLIPS, ind)
+        self._diario("material", f"Clip nuevo con Wan a partir de {f['archivo']}", ruta=str(destino))
+        return "Clip nuevo hecho a partir de una de sus fotos; entra en los próximos vídeos."
+
+    def video_sjinn(self, tema: str) -> str:
+        from nexus_crear import sjinn_video
+        b = self.e["id"].get("biblia", {})
+        destino = CLIPS / f"sjinn-{int(time.time())}.mp4"
+        CLIPS.mkdir(parents=True, exist_ok=True)
+        sjinn_video(f"Vertical 9:16 short video for TikTok/Reels, Spanish from Spain. Character: "
+                    f"{self.e['id'].get('apariencia_en') or b.get('apariencia_en', '')}. Topic: {tema}. Natural, no "
+                    "text overlays, no logos.", destino, log=self.log)
+        ind = self._indice(CLIPS)
+        ind.append({"archivo": destino.name, "escena": tema[:60], "apta": "publica", "origen": "SJinn",
+                    "fecha": time.strftime("%Y-%m-%d")})
+        self._guardar_indice(CLIPS, ind)
+        self._diario("material", f"Vídeo de SJinn: {tema}", ruta=str(destino))
+        return f"Vídeo de SJinn hecho («{tema}»); está en su página y entra en los próximos vídeos."
+
     def _rutina_diaria(self) -> None:
         """Cada día a partir de las 10:00 prepara el plan; cada media hora mira comentarios de YouTube."""
         time.sleep(180)
@@ -651,6 +810,14 @@ class Nexus:
                         and not any(c.get("dia") == hoy for c in self.e.get("cola", []))):
                     txt = self.plan_del_dia()
                     self.avisar("Asuka: " + txt)
+                hechas = self.publicar_pendientes()
+                if hechas:
+                    self.avisar("Asuka ha publicado: " + " · ".join(hechas))
+                if (int(time.strftime("%H")) >= 11 and self.e.get("fotos_dia") != hoy
+                        and self.e.get("id", {}).get("biblia")):
+                    self.e["fotos_dia"] = hoy                     # 2 fotos nuevas al día, si hay cupo gratis
+                    self._guardar()
+                    self.crear_fotos(2)
                 n = self.leer_comentarios()
                 if n:
                     self.avisar(f"Asuka tiene {n} comentario{'s' if n > 1 else ''} nuevo{'s' if n > 1 else ''} en "
@@ -1131,6 +1298,8 @@ class Nexus:
         e["youtube"] = self.youtube.estado() if self.youtube else {"conectado": False}
         e["comentarios"] = [c for c in self.e.get("comentarios", []) if not c.get("ignorado")][-60:]
         e["subida"] = {k: v["subir"] for k, v in SUBIR.items()}
+        e["conectadas"] = self.redes_conectadas()
+        e["auto_publicar"] = self.e.get("auto_publicar", True)
         pp = NX / "portadas" / "perfil_1080.jpg"
         e["portadas_v"] = str(int(pp.stat().st_mtime)) if pp.exists() else ""
         e["referencias"] = self._indice(REF)

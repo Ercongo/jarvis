@@ -216,7 +216,9 @@ function pintar(d) {
   const co = $("cola"); co.textContent = "";
   const cola = d.cola || [];
   const pend = cola.filter(c => c.estado === "pendiente").length;
-  $("cola-estado").textContent = cola.length ? pend + " por publicar · " + (cola.length - pend) + " hechas hoy" : "Todavía no hay plan para hoy.";
+  const con = (d.conectadas || []).map(r => (d.redes || {})[r] || r);
+  $("cola-estado").textContent = (cola.length ? pend + " por publicar · " + (cola.length - pend) + " hechas hoy" : "Todavía no hay plan para hoy.")
+    + " · Publica sola en: " + (con.length ? con.join(", ") + (d.auto_publicar ? " (a su hora)" : " (desactivado)") : "ninguna red conectada todavía");
   for (const c of cola) {
     const it = el("div", null, "item " + c.estado);
     it.appendChild(el("div", ((d.redes || {})[c.red] || c.red) + (c.hora ? " · " + c.hora : "") + (c.tipo === "video" ? " · vídeo" : ""), "red"));
@@ -231,16 +233,17 @@ function pintar(d) {
     const sub = (d.subida || {})[c.red];
     if (sub) { const a = el("a", "Abrir " + ((d.redes || {})[c.red] || c.red)); a.className = "boton"; a.href = sub; a.target = "_blank"; a.rel = "noopener"; bs.appendChild(a); }
     if (c.estado === "pendiente") {
-      if (c.red === "youtube" && d.youtube && d.youtube.conectado) {
-        const by = el("button", "Publicar en YouTube ya");
-        by.onclick = async () => { by.textContent = "Subiendo…"; by.disabled = true; await accion({ tipo: "youtube", id: c.id }); };
-        bs.appendChild(by);
+      if ((d.conectadas || []).includes(c.red)) {
+        const bp = el("button", "Publicar ya");
+        bp.onclick = async () => { bp.textContent = "Publicando…"; bp.disabled = true; await accion({ tipo: "publicar", id: c.id, texto: ta.value }); };
+        bs.appendChild(bp);
       }
       const bh = el("button", "Hecho");
       bh.onclick = () => { const u = prompt("Enlace de la publicación (si lo tienes; si no, deja vacío):", ""); if (u !== null) accion({ tipo: "hecho", id: c.id, url: u }); };
       bs.appendChild(bh);
       const bx = el("button", "Descartar"); bx.onclick = () => accion({ tipo: "descartar", id: c.id }); bs.appendChild(bx);
     } else if (c.url) { const a = el("a", "Ver publicación"); a.href = c.url; a.target = "_blank"; a.className = "boton"; bs.appendChild(a); }
+    if (c.error) it.appendChild(el("div", "No se pudo publicar: " + c.error, "err-txt"));
     it.appendChild(bs); co.appendChild(it);
   }
   // youtube

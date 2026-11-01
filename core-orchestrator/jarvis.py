@@ -1308,7 +1308,7 @@ class Jarvis:
             guardar_clave_estudio("elevenlabs_voz", m.group(1))
             return {"texto": "Apuntada la voz de ElevenLabs para el personaje de Nexus.", "susurro": None,
                     "despues": None, "archivo": None}
-        m = re.search(r"(?i)\b(?:clave|key|token|api)\s+(?:de\s+)?(musicful|fal(?:\.ai)?|runway|hugging\s*face|hf|eleven\s*labs)\b"
+        m = re.search(r"(?i)\b(?:clave|key|token|api)\s+(?:de\s+)?(musicful|fal(?:\.ai)?|runway|hugging\s*face|hf|eleven\s*labs|sjinn)\b"
                       r"\W*([A-Za-z0-9_\-:.]{16,})", texto) or re.search(r"\b()(hf_[A-Za-z0-9]{30,})\b", texto)
         if m:                                           # claves del estudio: ni al registro ni a la IA
             servicio = normalizar(m.group(1) or "hf").replace(" ", "").replace(".ai", "")

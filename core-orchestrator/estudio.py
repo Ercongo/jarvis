@@ -600,6 +600,9 @@ def comprobar_clave(servicio: str, clave: str) -> str:
             return f"Hugging Face acepta el token de {r.get('name', 'tu cuenta')}: tendrás más cupo gratis."
         if servicio == "fal":
             return "Clave de fal guardada; la probaré en el primer encargo (Kling, Pika, Luma y Sonauto)."
+        if servicio == "sjinn":
+            return ("Clave de SJinn guardada. Cada vídeo gasta créditos de tu cuenta (mínimo 200 por encargo); "
+                    "dime «nexus, haz un vídeo con sjinn sobre …» cuando quieras usarla.")
     except urllib.error.HTTPError as e:
         return f"Ojo: {servicio} responde {e.code} con esa clave. La guardo igualmente; revísala si falla."
     except Exception as e:
