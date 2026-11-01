@@ -173,6 +173,8 @@ def es_orden_fija(texto: str) -> bool:
     t = normalizar(texto).strip(" .?¿!¡")
     if not t:
         return False
+    if re.search(r"\bvoz (de asuka|de antes|normal|de siempre|de mayordomo|original)\b", t):
+        return True
     # lo que trabaja con sus archivos de oficina: las reglas de oficina son exactas (abren, suman y añaden de
     # verdad); el cerebro de reserva contestaba «no tengo el contenido» o se inventaba la suma
     if re.search(r"\b(excel|hoja de calculo|word|pdf|plano|presentacion|powerpoint|omni ?rout\w*|omniru\w*)\b", t) \
@@ -1086,6 +1088,8 @@ class Jarvis:
                            enviar_documento=self.tg.enviar_documento,
                            es_telegram=lambda: getattr(self._canal, "tg", False))
         self.ui.nexus = self.nexus
+        from voz_personaje import VozPersonaje             # «pon la voz de Asuka» / «pon tu voz de antes»
+        self.voz_personaje = VozPersonaje(self, Voz, log)
         threading.Timer(90, self.nexus.recordar).start()   # una pregunta de Nexus sin contestar se repite al arrancar
         from herramientas import abrir_web as _abrir
         try:                                            # la página de Asuka, solo al encender el portátil
@@ -1781,7 +1785,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.alexa, "alexa"), (self.radio, "radio"), (self.copias, "copias"), (self.nexus, "nexus"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.visual, "visual"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.alexa, "alexa"), (self.radio, "radio"), (self.copias, "copias"), (self.voz_personaje, "voz"), (self.nexus, "nexus"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.visual, "visual"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),
