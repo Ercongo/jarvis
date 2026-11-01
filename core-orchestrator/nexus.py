@@ -5,6 +5,13 @@ Pinterest y correo, llevado por el asistente paso a paso y preguntando lo que ne
   «proyecto nexus», «sigue con nexus», «en qué paso va nexus»   → dice el paso y hace la pregunta que toque
   (la respuesta se dice normal: «la tercera», «Vexara», «sí», «cámbiale el pelo a más corto»…)
   «nexus: vuelve al paso de las bios», «nexus: haz otro vídeo», «nexus: ideas de vídeos», «abre el panel de nexus»
+  «nexus: prepara un clip en deevid / opengen / viggle», «nexus: ya tengo el clip», «nexus: material»,
+  «nexus: aprueba la foto 12», «nexus: quita la foto 12»
+
+Material propio del personaje (lo usa antes que generar nada):
+  ~/jarvis/nexus/referencias/  fotos del personaje + indice.json (escena y si es «publica», «revisar» o «no»)
+  ~/jarvis/nexus/clips/        clips hechos en DeeVid, OpenGen, Viggle… + indice.json
+Solo lo marcado «publica» entra solo en los vídeos; «revisar» únicamente si lo aprueba la persona; «no», nunca.
 
 Lo que hace el asistente: nombre, biblia del personaje, retratos (FLUX), biografías por red con el aviso de IA,
 guiones, voz, vídeos verticales y el calendario. Lo que hace la persona (las redes lo exigen): crear cuentas,
@@ -20,6 +27,7 @@ import random
 import re
 import threading
 import time
+from pathlib import Path
 from typing import Callable
 
 from herramientas import abrir_web, normalizar
@@ -28,6 +36,17 @@ from sistema import Respuesta
 
 NX = DATOS / "nexus"
 ESTADO = NX / "estado.json"
+REF, CLIPS = NX / "referencias", NX / "clips"
+DESCARGAS = [Path.home() / "Descargas", Path.home() / "Downloads"]
+WEBS_CLIP = {"deevid": ("DeeVid", "https://deevid.ai/es/model/h3"), "opengen": ("OpenGen", "https://opengen.ai/video"),
+             "viggle": ("Viggle", "https://viggle.ai")}
+VOZ_DESC = ["Young adult woman from Spain, about 24, warm slightly husky mid-low voice, confident and playful, dry "
+            "sarcastic humor, natural Castilian Spanish accent, relaxed pace, like a gamer streamer talking to her chat",
+            "Young adult woman from Madrid, clear bright voice with a teasing tone, energetic but not shouting, quick "
+            "witty delivery, Castilian Spanish accent, sounds like a popular tech and gaming creator",
+            "Young adult woman from Spain, low smooth calm voice, deadpan and ironic, slightly raspy, confident, "
+            "Castilian Spanish accent, unhurried like a late-night streamer"]
+VOZ_TEXTO = "Hola, soy {n}. Soy un personaje creado con inteligencia artificial, y no, no vengo a caerte bien."
 REDES = {
     "tiktok": {"nombre": "TikTok", "alta": "https://www.tiktok.com/signup", "bio": 80},
     "instagram": {"nombre": "Instagram", "alta": "https://www.instagram.com/accounts/emailsignup/", "bio": 150},
@@ -53,7 +72,9 @@ TITULOS = {"nombre": "Nombre y usuario", "biblia": "Biblia del personaje", "retr
            "voz": "Voz del personaje", "primer_video": "Primer vídeo", "conexiones": "Publicación automática",
            "rutina": "Calendario y rutina"}
 BASE = ("Influencer virtual creada con IA (y lo dice abiertamente). Mujer joven pelirroja, gamer y friki: anime "
-        "(Solo Leveling), videojuegos, gimnasio y tecnología. Estética oscura y cinematográfica. Personalidad directa, "
+        "(Solo Leveling), videojuegos, gimnasio y tecnología. Aspecto fijo (el de sus fotos de referencia): pelo rojo intenso, "
+        "largo y ondulado, gafas finas de montura metálica, piel clara, gargantilla negra; setup gamer con neones morados. "
+        "Estética oscura y cinematográfica. Personalidad directa, "
         "ruda pero inteligente, con humor seco; nunca ofensiva ni sexualizada. Habla español de España.")
 NUMEROS = {"uno": 1, "una": 1, "primero": 1, "primera": 1, "dos": 2, "segundo": 2, "segunda": 2, "tres": 3,
            "tercero": 3, "tercera": 3, "cuatro": 4, "cuarto": 4, "cuarta": 4, "cinco": 5, "quinto": 5, "quinta": 5,
@@ -182,6 +203,9 @@ class Nexus:
         if re.search(r"\b(panel|pagina)\b", t):
             abrir_web("http://127.0.0.1:8765/nexus")
             return Respuesta("Te abro el panel de Nexus.")
+        r = self._ordenes_material(t)
+        if r:
+            return r
         if re.search(r"\b(ideas?|otro video|nuevo video|haz (un|otro) video)\b", t):
             if "primer_video" not in self.e["hechos"] and self.e["paso"] != "primer_video":
                 return Respuesta("Antes de los vídeos tenemos que terminar el personaje. " + self.continuar().texto)
@@ -207,6 +231,130 @@ class Nexus:
         if re.search(r"\b(como va|en que paso|estado|progreso|que falta)\b", t):
             return Respuesta(self._resumen())
         return self.continuar()
+
+    # ---------------------------------------------------------------- material propio (fotos y clips)
+    @staticmethod
+    def _indice(carpeta: Path) -> list[dict]:
+        try:
+            return json.loads((carpeta / "indice.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+
+    @staticmethod
+    def _guardar_indice(carpeta: Path, ind: list[dict]) -> None:
+        carpeta.mkdir(parents=True, exist_ok=True)
+        (carpeta / "indice.json").write_text(json.dumps(ind, ensure_ascii=False, indent=1), encoding="utf-8")
+
+    def _material(self, apta: tuple[str, ...] = ("publica",)) -> tuple[list[dict], list[dict]]:
+        fotos = [dict(x, ruta=REF / x["archivo"]) for x in self._indice(REF) if x.get("apta") in apta
+                 and (REF / x["archivo"]).exists()]
+        clips = [dict(x, ruta=CLIPS / x["archivo"]) for x in self._indice(CLIPS) if x.get("apta") in apta
+                 and (CLIPS / x["archivo"]).exists()]
+        return fotos, clips
+
+    def _recoger_descargas(self) -> list[str]:
+        """Los clips que la persona ha bajado de DeeVid, OpenGen o Viggle desde que se los pedí pasan a clips/."""
+        p = self.e.get("clip_pedido") or {}
+        if not p:
+            return []
+        nuevos, ind = [], self._indice(CLIPS)
+        for d in DESCARGAS:
+            for f in sorted(d.glob("*.mp4")) if d.exists() else []:
+                if f.stat().st_mtime < p.get("t", 0) - 60 or f.stat().st_size < 50_000:
+                    continue
+                CLIPS.mkdir(parents=True, exist_ok=True)
+                nombre = f"clip{len(ind) + 1:02d}.mp4"
+                import shutil
+                shutil.move(str(f), CLIPS / nombre)
+                ind.append({"archivo": nombre, "escena": p.get("escena", ""), "apta": "publica",
+                            "origen": p.get("web", ""), "fecha": time.strftime("%Y-%m-%d")})
+                nuevos.append(nombre)
+        if nuevos:
+            self._guardar_indice(CLIPS, ind)
+            self.e["clip_pedido"] = None
+            self._guardar()
+        return nuevos
+
+    def _fuente(self, usadas: set, animar: bool = True):
+        """Para cada escena del guion: el clip o la foto propia que mejor encaje con lo que se ve (solo «publica»)."""
+        fotos, clips = self._material()
+
+        def puntos(x: dict, visual: str) -> int:
+            v = set(re.findall(r"[a-z]+", visual.lower()))
+            return len(v & set(x.get("escena", "").split()))
+
+        def elegir(visual_en: str, i: int):
+            libres_c = [c for c in clips if c["archivo"] not in usadas]
+            libres_f = [f for f in fotos if f["archivo"] not in usadas]
+            mejor_c = max(libres_c, key=lambda c: puntos(c, visual_en), default=None)
+            mejor_f = max(libres_f, key=lambda f: puntos(f, visual_en), default=None)
+            if mejor_c and (i == 0 or puntos(mejor_c, visual_en) >= max(1, puntos(mejor_f, visual_en) if mejor_f else 0)):
+                usadas.add(mejor_c["archivo"])
+                return "clip", mejor_c["ruta"]
+            if not mejor_f:
+                return None                                   # sin material: imagen nueva con FLUX
+            usadas.add(mejor_f["archivo"])
+            if animar and i == 0 and self.estudio:            # el gancho con movimiento: Wan en Hugging Face, gratis
+                try:
+                    destino = NX / "clips" / f"wan-{mejor_f['archivo'].rsplit('.', 1)[0]}.mp4"
+                    if not destino.exists():
+                        destino.parent.mkdir(parents=True, exist_ok=True)
+                        self.estudio.clip(f"the woman in the photo, {visual_en}, subtle natural movement, smiles at "
+                                          "camera", mejor_f["ruta"], destino, forzar="wan")
+                    return "clip", destino
+                except Exception as ex:
+                    self.log(f"nexus: Wan no ha animado la foto ({ex}); va quieta")
+            return "imagen", mejor_f["ruta"]
+        return elegir
+
+    def _ordenes_material(self, t: str) -> Respuesta | None:
+        m = re.search(r"\b(prepara|haz|pide)\w* (?:un |otro )?clip(?: (?:en|con) (deevid|opengen|open gen|viggle))?", t)
+        if m:
+            web = (m.group(2) or "deevid").replace(" ", "")
+            fotos, _ = self._material()
+            if not fotos:
+                return Respuesta("No tengo fotos aprobadas del personaje para animar.")
+            usadas = {c.get("foto") for c in self._indice(CLIPS)}
+            f = next((x for x in fotos if x["archivo"] not in usadas), random.choice(fotos))
+            b = self.e["id"].get("biblia", {})
+            idea = self._ia("Eres director de vídeos cortos con IA. Devuelve SOLO JSON.",
+                            f"Escribe la instrucción (en inglés, máx. 60 palabras) para animar 5 segundos esta foto del "
+                            f"personaje {self.e['id'].get('nombre', '')} ({b.get('resumen', BASE)}). La foto: "
+                            f"{f['escena']}. Movimiento natural, cámara cinematográfica, nada sexual. JSON: "
+                            "{\"prompt\": \"…\"}")
+            nombre, url = WEBS_CLIP[web]
+            self.e["clip_pedido"] = {"t": time.time(), "web": nombre, "escena": f["escena"], "foto": f["archivo"]}
+            self._guardar()
+            self.enviar_foto(str(f["ruta"]), f"Para {nombre}: sube esta foto y pega esto:\n\n{idea.get('prompt', '')}")
+            if not self.es_telegram():
+                abrir_web(url)
+            return Respuesta(f"Te abro {nombre} y te mando por Telegram la foto y la instrucción para pegar. Usa tu "
+                             "cuenta gratis; cuando lo tengas, descárgalo (se guarda en Descargas) y dime «nexus, ya "
+                             "tengo el clip»: lo cojo yo de ahí.")
+        if re.search(r"\bya tengo (el |los )?clips?\b", t):
+            n = self._recoger_descargas()
+            return Respuesta(f"Guardado{'s' if len(n) > 1 else ''} {len(n)} clip{'s' if len(n) > 1 else ''} del "
+                             "personaje; los usaré en los próximos vídeos." if n else
+                             "No veo ningún vídeo nuevo en Descargas desde que lo pedí. ¿Lo has descargado ya?")
+        m = re.search(r"\b(aprueba|vale|quita|retira|bloquea)\w* (?:la )?(?:foto|referencia|imagen) (\d{1,3})\b", t)
+        if m:
+            ind = self._indice(REF)
+            nombre = f"ref{int(m.group(2)):02d}.jpg"
+            x = next((r for r in ind if r["archivo"] == nombre), None)
+            if not x:
+                return Respuesta(f"No tengo la foto {m.group(2)}.")
+            x["apta"] = "publica" if m.group(1).startswith(("aprueba", "vale")) else "no"
+            self._guardar_indice(REF, ind)
+            return Respuesta(f"Foto {m.group(2)}: " + ("la puedo usar en los vídeos." if x["apta"] == "publica"
+                                                      else "no la usaré en las redes."))
+        if re.search(r"\bmaterial\b", t):
+            self._recoger_descargas()
+            ind = self._indice(REF)
+            cuenta = {a: sum(1 for r in ind if r.get("apta") == a) for a in ("publica", "revisar", "no")}
+            return Respuesta(f"Material de {self.e['id'].get('nombre', 'Nexus')}: {len(ind)} fotos ({cuenta['publica']} "
+                             f"para usar sola, {cuenta['revisar']} solo si me las apruebas, {cuenta['no']} que no subo) "
+                             f"y {len(self._indice(CLIPS))} clips. Están en el panel de Nexus.")
+        return None
 
     def _resumen(self) -> str:
         hechos = [TITULOS[p] for p in ORDEN if p in self.e["hechos"]]
@@ -312,6 +460,25 @@ class Nexus:
 
     # ================================================================ 3. retrato
     def _paso_retrato(self) -> Respuesta:
+        fotos, _ = self._material()
+        orden_cara = ("portrait", "closeup", "chair", "street", "motorbike", "mall")   # mejor cuanto antes salga
+        caras = sorted((f for f in fotos if any(w in f["escena"] for w in orden_cara)),
+                       key=lambda f: min(i for i, w in enumerate(orden_cara) if w in f["escena"]))[:4]
+        if caras:                                         # sus fotos de verdad: de ahí sale la foto de perfil
+            from PIL import Image, ImageOps
+            carpeta = NX / "retratos"
+            carpeta.mkdir(exist_ok=True)
+            for v in carpeta.glob("candidata*.jpg"):
+                v.unlink()
+            ops = []
+            for i, f in enumerate(caras):
+                ruta = carpeta / f"candidata{i + 1}.jpg"
+                with Image.open(f["ruta"]) as im:
+                    ImageOps.fit(im.convert("RGB"), (720, 720), Image.LANCZOS, centering=(0.5, 0.2)).save(ruta, quality=92)
+                ops.append({"ruta": str(ruta), "semilla": 0, "ref": f["archivo"]})
+                self.enviar_foto(str(ruta), f"Candidata {i + 1}")
+            return self._preguntar("retrato", f"Para la foto de perfil he recortado {len(ops)} de sus fotos (las tienes "
+                                              "en el panel y en Telegram). ¿Cuál pongo? Dime el número.", opciones=ops)
         if not self.estudio:
             return Respuesta("No tengo el estudio de imágenes disponible.")
         ap = self.e["id"].get("apariencia_en", "")
@@ -442,14 +609,16 @@ class Nexus:
         return self._paso_cuentas()
 
     # ================================================================ 7. voz
-    def _paso_voz(self) -> Respuesta:
-        from nexus_video import voz_kokoro
+    def _paso_voz(self, intento: int = 0) -> Respuesta:
+        from nexus_video import voz_kokoro, voz_qwen_disenar
 
         def trabajo():
             ruta = NX / "muestra_voz.wav"
-            texto = (f"Hola, soy {self.e['id']['nombre']}. {self.e['id'].get('aviso_ia', 'Soy un personaje creado con IA')}. "
-                     "Y no, no vengo a caerte bien.")
-            if voz_kokoro(texto, ruta):
+            texto = VOZ_TEXTO.format(n=self.e["id"].get("nombre", "Asuka").split()[0])
+            if voz_qwen_disenar(texto, VOZ_DESC[intento % len(VOZ_DESC)], ruta):
+                origen = "Qwen3-TTS (una voz propia, diseñada para ella)"
+                self.e["voz_intento"] = intento
+            elif voz_kokoro(texto, ruta):
                 origen = "Kokoro"
             elif self.voz is not None:
                 from nexus_video import voz_piper
@@ -467,6 +636,14 @@ class Nexus:
         return Respuesta("Preparo una muestra de la voz del personaje.")
 
     def _resp_voz(self, texto: str, q: dict) -> Respuesta:
+        if re.search(r"\b(otr[oa]s?|cambia\w*|repite)\b", normalizar(texto)) or si_no(texto) == "no" \
+                and "voz_intento" in self.e and self.e["voz_intento"] < len(VOZ_DESC) - 1:
+            self.e["pregunta"] = None
+            return self._paso_voz(self.e.get("voz_intento", 0) + 1)
+        if si_no(texto) == "si" and "voz_intento" in self.e and (NX / "muestra_voz.wav").exists():
+            import shutil                                     # esta muestra es SU voz para siempre
+            shutil.copy(NX / "muestra_voz.wav", NX / "voz_ref.wav")
+            self.e["id"]["voz_ref_texto"] = VOZ_TEXTO.format(n=self.e["id"].get("nombre", "Asuka").split()[0])
         if si_no(texto) == "no":
             self.e["pregunta"] = None
             self._guardar()
@@ -503,17 +680,25 @@ class Nexus:
         def trabajo():
             from nexus_video import crear_corto, voz_piper
             b = self.e["id"].get("biblia", {})
+            fotos, clips = self._material()
+            lugares = ", ".join(sorted({x["escena"] for x in fotos + clips}))
             g = self._ia("Eres guionista de vídeos cortos virales. Devuelve SOLO JSON.",
                          f"Guion de un vídeo vertical de 30-45 segundos para {self.e['id']['nombre']} ({b.get('tono', '')}). "
                          f"Idea: {idea['titulo']}. Gancho: {idea.get('gancho', '')}. 4-6 escenas; cada escena: \"texto\" "
                          "(lo que dice, frases cortas en español de España, 1-2 frases) y \"visual_en\" (qué se ve, EN "
-                         "INGLÉS, con el personaje en un lugar concreto). Termina con una llamada a seguir. Además "
+                         "INGLÉS, con el personaje en un lugar concreto"
+                         + (f", eligiendo entre estos lugares de los que hay fotos suyas: {lugares}" if lugares else "")
+                         + "). Termina con una llamada a seguir. Además "
                          "\"titulo\", \"caption\" (español, con el aviso de IA al final), \"hashtags\" (8, incluye #IA "
                          "y #AIinfluencer), \"titulo_youtube\" (máx 90 car.). JSON: {\"titulo\": …, \"escenas\": [{\"texto\": "
                          "…, \"visual_en\": …}], \"caption\": …, \"hashtags\": […], \"titulo_youtube\": …}", max_tokens=2000)
             carpeta = NX / "videos" / time.strftime("%Y%m%d-%H%M%S")
             reserva = (lambda tx, ruta: voz_piper(self.voz.voz, tx, ruta)) if self.voz is not None else None
-            ruta = crear_corto(g, self.e["id"], carpeta, self.estudio.imagen, voz_reserva=reserva, log=self.log)
+            self._recoger_descargas()
+            ref = NX / "voz_ref.wav"
+            voz_ref = (ref, self.e["id"]["voz_ref_texto"]) if ref.exists() and self.e["id"].get("voz_ref_texto") else None
+            ruta = crear_corto(g, self.e["id"], carpeta, self.estudio.imagen, voz_reserva=reserva, log=self.log,
+                               fuente=self._fuente(set()), voz_ref=voz_ref)
             (carpeta / "publicacion.json").write_text(json.dumps(g, ensure_ascii=False, indent=1), encoding="utf-8")
             v = {"titulo": g.get("titulo", idea["titulo"]), "ruta": str(ruta), "carpeta": str(carpeta),
                  "fecha": time.strftime("%Y-%m-%d %H:%M"), "publicado": {}}
@@ -583,5 +768,7 @@ class Nexus:
         e["redes"] = {k: v["nombre"] for k, v in REDES.items()}
         e["retratos"] = sorted(p.name for p in (NX / "retratos").glob("*.jpg")) if (NX / "retratos").exists() else []
         e["perfil"] = (NX / "perfil.jpg").exists()
+        e["referencias"] = self._indice(REF)
+        e["clips"] = self._indice(CLIPS)
         e["ocupado"] = self.ocupado
         return e

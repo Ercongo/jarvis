@@ -1,12 +1,12 @@
 """
 Vídeos cortos verticales (1080×1920) para el proyecto Nexus, a coste 0 y en este portátil:
 
-  guion por escenas  →  voz del personaje (Kokoro «ef_dora» si está instalado; si no, Piper voz femenina)
-                     →  una imagen por escena (FLUX en Hugging Face, con la descripción fija del personaje)
+  guion por escenas  →  voz del personaje: Qwen3-TTS (espacio gratuito de Qwen en Hugging Face, con la voz propia
+                         del personaje diseñada una vez y reutilizada siempre); si falla, Kokoro «ef_dora»; si no, Piper
+                     →  por escena, lo que mejor encaje: un clip del personaje (DeeVid, OpenGen, Viggle, Wan…), una de
+                         sus fotos de referencia, o una imagen nueva con FLUX
                      →  movimiento suave (zoom), subtítulos grandes palabra a palabra y la etiqueta «IA»
                      →  MP4 listo para TikTok, Reels y Shorts.
-
-Kokoro (hexgrad, Apache-2.0) suena mucho más natural que Piper; se instala con instalar_voz_nexus.sh.
 """
 
 from __future__ import annotations
@@ -32,6 +32,48 @@ def voz_kokoro(texto: str, destino: Path, voz: str = "ef_dora", velocidad: float
         return False
     r = subprocess.run([str(py), str(guion), texto, str(destino), voz, str(velocidad)], capture_output=True, timeout=300)
     return r.returncode == 0 and destino.exists() and destino.stat().st_size > 1000
+
+
+QWEN_TTS = "Qwen/Qwen3-TTS"     # comprobado el 1 nov 2026: /generate_voice_design y /generate_voice_clone, ~15 s
+
+
+def _qwen():
+    from gradio_client import Client
+    try:
+        from estudio import leer_claves
+        tok = leer_claves().get("hf") or None
+    except Exception:
+        tok = None
+    return Client(QWEN_TTS, token=tok, verbose=False) if tok else Client(QWEN_TTS, verbose=False)
+
+
+def voz_qwen_disenar(texto: str, descripcion_en: str, destino: Path) -> bool:
+    """Crea una voz nueva a partir de una descripción (no copia la voz de nadie)."""
+    try:
+        a, _ = _qwen().predict(texto, "Spanish", descripcion_en, api_name="/generate_voice_design")
+        shutil.copy(a, destino)
+        return destino.stat().st_size > 1000
+    except Exception:
+        return False
+
+
+def voz_qwen(texto: str, destino: Path, ref_wav: Path, ref_texto: str) -> bool:
+    """La voz propia del personaje (su muestra de referencia) diciendo un texto nuevo: siempre suena igual."""
+    if not (ref_wav and Path(ref_wav).exists() and ref_texto):
+        return False
+    try:
+        from gradio_client import handle_file
+        a, _ = _qwen().predict(handle_file(str(ref_wav)), ref_texto, texto, "Spanish", False, "1.7B",
+                               api_name="/generate_voice_clone")
+        tmp = destino.with_suffix(".qwen")
+        shutil.copy(a, tmp)
+        # a WAV normal (el espacio puede devolver otro formato)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(tmp), "-ar", "44100", "-ac", "1", str(destino)],
+                       check=True)
+        tmp.unlink(missing_ok=True)
+        return destino.stat().st_size > 1000
+    except Exception:
+        return False
 
 
 def voz_piper(voz_piper, texto: str, destino: Path, hablante: int = 0) -> None:
@@ -82,13 +124,23 @@ def subtitulos(escenas: list[dict], destino: Path, etiqueta: str) -> None:
 
 # ================================================================ montaje
 def montar(escenas: list[dict], carpeta: Path, salida: Path, etiqueta: str, log: Callable[[str], None] = print) -> Path:
-    """escenas: [{"imagen": Path, "audio": Path, "texto": str}] → MP4 vertical con zoom, voz y subtítulos."""
+    """escenas: [{"imagen": Path | "clip": Path, "audio": Path, "texto": str}] → MP4 vertical con voz y subtítulos.
+    Una imagen lleva zoom suave; un clip se recorta a vertical, se repite si es corto y pierde su sonido."""
     partes = []
     for i, e in enumerate(escenas):
         e["dur"] = max(1.5, duracion(e["audio"]) + 0.25)
         clip = carpeta / f"esc{i}.mp4"
         frames = int(e["dur"] * 30)
         zoom = "min(zoom+0.0009,1.12)" if i % 2 == 0 else "if(eq(on,0),1.12,max(zoom-0.0009,1.0))"
+        if e.get("clip"):
+            subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-stream_loop", "-1", "-i", str(e["clip"]),
+                            "-i", str(e["audio"]), "-filter_complex",
+                            f"[0:v]scale={ANCHO}:{ALTO}:force_original_aspect_ratio=increase,crop={ANCHO}:{ALTO},"
+                            "fps=30,format=yuv420p[v];[1:a]apad,aresample=44100[a]",
+                            "-map", "[v]", "-map", "[a]", "-t", f"{e['dur']:.2f}", "-c:v", "libx264", "-preset",
+                            "veryfast", "-crf", "21", "-c:a", "aac", "-b:a", "160k", str(clip)], check=True)
+            partes.append(clip)
+            continue
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-i", str(e["imagen"]), "-i", str(e["audio"]),
                         "-filter_complex",
                         f"[0:v]scale=1620:2880,zoompan=z='{zoom}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={frames}:"
@@ -111,18 +163,35 @@ def montar(escenas: list[dict], carpeta: Path, salida: Path, etiqueta: str, log:
 
 
 def crear_corto(guion: dict, identidad: dict, carpeta: Path, imagen: Callable[[str, int, int, Path, int | None], Path],
-                voz_reserva: Callable[[str, Path], None] | None = None, log: Callable[[str], None] = print) -> Path:
-    """guion = {"titulo", "escenas": [{"texto": lo que dice, "visual_en": la imagen en inglés}]}"""
+                voz_reserva: Callable[[str, Path], None] | None = None, log: Callable[[str], None] = print,
+                fuente: Callable[[str, int], tuple[str, Path] | None] | None = None,
+                voz_ref: tuple[Path, str] | None = None) -> Path:
+    """guion = {"titulo", "escenas": [{"texto": lo que dice, "visual_en": la imagen en inglés}]}
+    fuente(visual_en, i) → ("clip" | "imagen", ruta) con material propio del personaje, o None para hacer una con FLUX.
+    voz_ref = (muestra.wav, lo que dice la muestra): la voz Qwen3 del personaje."""
     carpeta.mkdir(parents=True, exist_ok=True)
     aspecto = identidad.get("apariencia_en", "")
     semilla = int(identidad.get("semilla") or 1234)
     escenas = []
     for i, e in enumerate(guion["escenas"][:8]):
         audio = carpeta / f"voz{i}.wav"
-        if not voz_kokoro(e["texto"], audio):
+        if voz_ref and voz_qwen(e["texto"], audio, *voz_ref):
+            pass
+        elif not voz_kokoro(e["texto"], audio):
             if voz_reserva is None:
                 raise RuntimeError("no hay voz disponible (instala Kokoro con instalar_voz_nexus.sh)")
             voz_reserva(e["texto"], audio)
+        propio = fuente(e.get("visual_en", ""), i) if fuente else None
+        if propio and propio[0] == "clip":
+            escenas.append({"clip": propio[1], "audio": audio, "texto": e["texto"]})
+            continue
+        if propio:
+            from PIL import Image, ImageOps
+            img = carpeta / f"img{i}.jpg"
+            with Image.open(propio[1]) as im:      # a vertical 9:16 sin deformar (recorta lo que sobre)
+                ImageOps.fit(im.convert("RGB"), (1080, 1920), Image.LANCZOS, centering=(0.5, 0.35)).save(img, quality=92)
+            escenas.append({"imagen": img, "audio": audio, "texto": e["texto"]})
+            continue
         img = carpeta / f"img{i}.jpg"
         prompt = (f"{aspecto}. {e.get('visual_en', '')}. Vertical 9:16 photo, cinematic lighting, high detail, "
                   "consistent character, no text, no watermark")

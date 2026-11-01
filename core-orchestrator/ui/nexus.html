@@ -44,6 +44,13 @@
   .vacio { color:var(--tenue); }
   dl { margin:0; } dt { color:var(--cian); margin-top:8px; } dd { margin:2px 0 0 0; color:var(--tinta); }
   .ocupado { color:var(--oro); }
+  .refs { display:grid; grid-template-columns:repeat(auto-fill, minmax(78px, 1fr)); gap:6px; }
+  .refs figure { margin:0; position:relative; }
+  .refs img { width:100%; aspect-ratio:3/4; object-fit:cover; border:2px solid var(--linea); display:block; }
+  .refs figure.publica img { border-color:var(--ok); } .refs figure.revisar img { border-color:var(--oro); }
+  .refs figure.no img { border-color:var(--rojo); opacity:.35; }
+  .refs figcaption { position:absolute; left:3px; top:2px; font-size:12px; background:rgba(0,0,0,.7); padding:0 4px; }
+  #clips video { width:48%; max-height:260px; margin:8px 1% 0 0; }
 </style>
 </head>
 <body>
@@ -61,6 +68,10 @@
   <section><h2>Cuentas</h2><table id="cuentas"></table><p class="vacio" style="font-size:14px">Las crea usted (con su móvil y
     contraseña); el asistente le guía y apunta el usuario.</p></section>
   <section><h2>Retratos</h2><div class="rejilla" id="retratos"></div></section>
+  <section><h2>Material del personaje</h2>
+    <p class="vacio" style="font-size:14px;margin-top:0">Verde: la uso sola en los vídeos · ámbar: solo si me la apruebas
+      («nexus, aprueba la foto 12») · rojo: no se sube.</p>
+    <div class="refs" id="refs"></div><div id="clips"></div></section>
   <section><h2>Vídeos</h2><div id="videos" class="vacio">Todavía no hay vídeos.</div></section>
   <section><h2>Biblia del personaje</h2><dl id="biblia" class="vacio">Aún no está hecha.</dl></section>
   <section><h2>Plan semanal</h2><div id="calendario" class="vacio">Se hace en el último paso.</div></section>
@@ -121,6 +132,18 @@ function pintar(d) {
     f.appendChild(i); f.appendChild(el("figcaption", r.replace(".jpg", "").replace("candidata", "Candidata "))); rj.appendChild(f);
   });
   if (!rj.childNodes.length) rj.appendChild(el("p", "Aún no hay retratos.", "vacio"));
+  // material propio
+  const rf = $("refs"); rf.textContent = "";
+  (d.referencias || []).forEach((r) => {
+    const f = el("figure", null, r.apta); const i = el("img"); i.loading = "lazy";
+    i.src = archivo("referencias/" + r.archivo); i.alt = r.escena; i.title = r.escena + " · " + r.apta;
+    f.appendChild(i); f.appendChild(el("figcaption", String(parseInt(r.archivo.replace(/\D/g, ""), 10)))); rf.appendChild(f);
+  });
+  const cl = $("clips"); cl.textContent = "";
+  (d.clips || []).forEach((c) => {
+    const v = el("video"); v.controls = true; v.preload = "none"; v.muted = true; v.title = c.escena;
+    v.src = archivo("clips/" + c.archivo); cl.appendChild(v);
+  });
   // vídeos
   const vs = d.videos || [];
   if (vs.length) {

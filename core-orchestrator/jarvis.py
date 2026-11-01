@@ -772,6 +772,8 @@ class Voz:
 # =============================================================== LLM (ollama)
 
 def ollama(ruta: str, cuerpo: dict | None = None, timeout: int = 10) -> dict:
+    if cuerpo and str(cuerpo.get("model", "")).startswith("qwen3"):
+        cuerpo.setdefault("think", False)            # Qwen3 sin «pensar en voz alta»: contesta en segundos
     datos = json.dumps(cuerpo).encode() if cuerpo is not None else None
     req = urllib.request.Request(OLLAMA_URL + ruta, data=datos, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -800,6 +802,9 @@ def esperar_ollama(ui: Interfaz) -> bool:
     else:
         log("IA local: Ollama no responde; sigo sin ella")
         return False
+    global MODELO_LLM
+    if "JARVIS_LLM" not in os.environ and "qwen3:1.7b" in modelos:
+        MODELO_LLM = "qwen3:1.7b"                    # mejor que qwen2.5:1.5b en español, mismo tamaño
     if MODELO_LLM not in modelos and f"{MODELO_LLM}:latest" not in modelos:
         log(f"IA local: falta el modelo {MODELO_LLM} (ollama pull {MODELO_LLM}); sigo sin ella")
         return False
