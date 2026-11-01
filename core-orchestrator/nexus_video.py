@@ -198,14 +198,28 @@ def crear_corto(guion: dict, identidad: dict, carpeta: Path, imagen: Callable[[s
     aspecto = identidad.get("apariencia_en", "")
     semilla = int(identidad.get("semilla") or 1234)
     escenas = []
-    for i, e in enumerate(guion["escenas"][:8]):
-        audio = carpeta / f"voz{i}.wav"
-        if voz_elevenlabs(e["texto"], audio) or voz_ref and voz_qwen(e["texto"], audio, *voz_ref):
-            pass
-        elif not voz_kokoro(e["texto"], audio):
+    textos = [e["texto"] for e in guion["escenas"][:8]]
+
+    def reserva(texto: str, audio: Path) -> None:
+        if not voz_kokoro(texto, audio):
             if voz_reserva is None:
                 raise RuntimeError("no hay voz disponible (instala Kokoro con instalar_voz_nexus.sh)")
-            voz_reserva(e["texto"], audio)
+            voz_reserva(texto, audio)
+
+    # la voz, entera de una misma fuente: si la buena falla a mitad (p. ej. se acaba el cupo diario de Hugging Face),
+    # todo el vídeo se hace con la de reserva, para que no cambie de voz entre escenas
+    buena = None
+    for nombre, f in (("ElevenLabs", voz_elevenlabs),
+                      ("Qwen3", (lambda tx, au: voz_qwen(tx, au, *voz_ref)) if voz_ref else None)):
+        if f and all(f(tx, carpeta / f"voz{i}.wav") for i, tx in enumerate(textos)):
+            buena = nombre
+            break
+    if not buena:
+        for i, tx in enumerate(textos):
+            reserva(tx, carpeta / f"voz{i}.wav")
+    log(f"nexus: voz del vídeo con {buena or 'Kokoro (reserva)'}")
+    for i, e in enumerate(guion["escenas"][:8]):
+        audio = carpeta / f"voz{i}.wav"
         propio = fuente(e.get("visual_en", ""), i) if fuente else None
         if propio and propio[0] == "clip":
             escenas.append({"clip": propio[1], "audio": audio, "texto": e["texto"]})

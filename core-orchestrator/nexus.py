@@ -62,6 +62,8 @@ REDES = {
     "twitch": {"nombre": "Twitch", "alta": "https://www.twitch.tv/signup", "bio": 300, "perfil": "https://www.twitch.tv/{u}"},
     "pinterest": {"nombre": "Pinterest", "alta": "https://www.pinterest.es/business/create/", "bio": 500,
                   "perfil": "https://www.pinterest.es/{u}/"},
+    "facebook": {"nombre": "Facebook (página)", "alta": "https://www.facebook.com/pages/create", "bio": 255,
+                 "perfil": "https://www.facebook.com/{u}"},
 }
 GUIA_ALTA = {
     "tiktok": "Regístrate con el correo del personaje y el usuario. Luego: Perfil → menú → Herramientas para creadores → "
@@ -73,6 +75,11 @@ GUIA_ALTA = {
     "x": "Regístrate con el correo del personaje y el usuario. Pon foto, banner y bio. En la bio ya va el aviso de IA.",
     "twitch": "Regístrate con el usuario del personaje. Pon foto y bio. (Twitch es en directo: lo usaremos más adelante.)",
     "pinterest": "Crea una cuenta de empresa con el correo del personaje. Categoría: Entretenimiento. Pon foto y bio.",
+    "facebook": "En Facebook el personaje va como PÁGINA, no como perfil de persona (Meta cierra los perfiles que no son "
+                "de una persona real). Entra con tu propio Facebook → Páginas → Crear página: nombre del personaje, "
+                "categoría «Creador digital», foto y bio del panel. Luego, en la página: Configuración → Cuentas "
+                "vinculadas → Instagram, y enlaza su Instagram (hace falta para que yo publique en Instagram). Como "
+                "usuario, apúntame el nombre de la página que sale en su dirección (facebook.com/…).",
 }
 ORDEN = ["nombre", "biblia", "retrato", "bios", "correo", "cuentas", "voz", "primer_video", "conexiones", "rutina"]
 TITULOS = {"nombre": "Nombre y usuario", "biblia": "Biblia del personaje", "retrato": "Retrato y foto de perfil",
@@ -404,6 +411,18 @@ class Nexus:
             self._guardar()
             self._diario("ajuste", f"Mezcla de fotos: {v[0]} % verdes, {v[1]} % ámbar, {v[2]} % rojas")
             return Respuesta(f"Hecho: en los vídeos, {v[0]} % fotos verdes, {v[1]} % ámbar y {v[2]} % rojas.")
+        m = re.search(r"\busa (?:la )?voz (\d)\b", t)
+        if m:
+            import shutil
+            ref, txt = NX / "voces" / f"voz{m.group(1)}_ref.wav", NX / "voces" / f"voz{m.group(1)}_ref.txt"
+            if not (ref.exists() and txt.exists()):
+                return Respuesta(f"No tengo la voz {m.group(1)}.")
+            shutil.copy(ref, NX / "voz_ref.wav")
+            self.e["id"]["voz_ref_texto"] = txt.read_text(encoding="utf-8").strip()
+            self._guardar()
+            self._diario("ajuste", f"Voz del personaje: la {m.group(1)}", ruta=str(NX / "voces" / f"voz{m.group(1)}_muestra.wav"))
+            return Respuesta(f"Hecho: desde ahora {self.e['id'].get('nombre', 'el personaje')} habla con la voz "
+                             f"{m.group(1)} en los vídeos.")
         if re.search(r"\bmaterial\b", t):
             self._recoger_descargas()
             ind = self._indice(REF)
@@ -602,7 +621,7 @@ class Nexus:
                      + ", ".join(f"{k} {v['bio']}" for k, v in REDES.items())
                      + ". Para youtube, una descripción de canal de 3-4 frases. Añade \"email_firma\" (firma de correo "
                      "profesional para marcas, 3 líneas). JSON: {\"tiktok\": \"…\", \"instagram\": \"…\", \"youtube\": "
-                     "\"…\", \"x\": \"…\", \"twitch\": \"…\", \"pinterest\": \"…\", \"email_firma\": \"…\"}",
+                     "\"…\", \"x\": \"…\", \"twitch\": \"…\", \"pinterest\": \"…\", \"facebook\": \"…\", \"email_firma\": \"…\"}",
                      max_tokens=1500)
         for k, v in REDES.items():
             if k in d and len(d[k]) > v["bio"]:
