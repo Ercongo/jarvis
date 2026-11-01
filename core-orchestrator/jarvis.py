@@ -382,6 +382,12 @@ class Interfaz:
                     self._enviar(200, (UI_DIR / "nexus.html").read_bytes(), "text/html; charset=utf-8")
                 elif self.path.startswith("/nexus/datos") and ui.nexus:
                     self._enviar(200, json.dumps(ui.nexus.datos_panel(), ensure_ascii=False).encode(), "application/json")
+                elif self.path.startswith("/nexus/correo") and ui.nexus:
+                    # el Gmail del personaje, solo lectura (nexus_correo.py)
+                    import nexus_correo
+                    uid = self.path.split("?")[0][len("/nexus/correo"):].strip("/")
+                    r = nexus_correo.leer(uid) if uid else nexus_correo.lista()
+                    self._enviar(200, json.dumps(r, ensure_ascii=False).encode(), "application/json")
                 elif self.path.startswith("/nexus/archivo/") and ui.nexus:
                     # solo archivos dentro de ~/jarvis/nexus (retratos, vídeos, voz)
                     from nexus import NX
@@ -477,6 +483,16 @@ class Interfaz:
                         self._enviar(*r)
                     else:
                         self.send_error(404)
+                    return
+                if self.path == "/nexus/cuenta" and ui.nexus and self.headers.get("X-Jarvis") == "1":
+                    # la página de Asuka: «ya la he creado» en una red → se apunta el usuario
+                    n = int(self.headers.get("Content-Length") or 0)
+                    try:
+                        j = json.loads(self.rfile.read(min(n, 2000)) or b"{}")
+                        r = ui.nexus.apuntar_cuenta(str(j.get("red") or ""), str(j.get("usuario") or ""))
+                    except Exception as e:
+                        r = {"ok": False, "error": type(e).__name__}
+                    self._enviar(200, json.dumps(r, ensure_ascii=False).encode(), "application/json")
                     return
                 if self.path == "/casa" and ui.casa and self.headers.get("X-Jarvis") == "1":
                     # la pantalla: tocar un aparato de Alexa lo enciende o lo apaga

@@ -45,6 +45,19 @@
   dl { margin:0; } dt { color:var(--cian); margin-top:8px; } dd { margin:2px 0 0 0; color:var(--tinta); }
   .ocupado { color:var(--oro); }
   section.ancha { grid-column:1 / -1; }
+  td a { color:var(--tinta); text-decoration:none; border-bottom:1px dotted var(--cian); }
+  td a:hover { color:var(--cian); }
+  a.boton { color:var(--cian); border:1px solid var(--cian); padding:3px 10px; font:600 13px Rajdhani; text-decoration:none; }
+  td button, td a.boton { margin-left:4px; }
+  .barra { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+  .correo { display:grid; grid-template-columns:minmax(260px, 1fr) 2fr; gap:14px; }
+  @media (max-width:800px) { .correo { grid-template-columns:1fr; } }
+  #correo-lista { list-style:none; margin:0; padding:0; max-height:520px; overflow:auto; }
+  #correo-lista li { padding:8px 6px; border-bottom:1px solid var(--linea); cursor:pointer; }
+  #correo-lista li:hover, #correo-lista li.sel { background:rgba(56,232,255,.08); }
+  #correo-lista li.nuevo b { color:#fff; } #correo-lista li small { color:var(--tenue); display:block; }
+  #correo-leer { white-space:pre-wrap; max-height:520px; overflow:auto; background:#060c16; border:1px solid var(--linea); padding:12px; }
+  #correo-leer h3 { margin:0 0 4px; font:600 18px Rajdhani; color:#fff; white-space:normal; }
   #diario { max-height:520px; overflow:auto; }
   .ev { display:grid; grid-template-columns:150px 90px 1fr; gap:10px; padding:6px 0; border-bottom:1px solid var(--linea); }
   .ev time { color:var(--tenue); font-size:14px; } .ev b { font-size:13px; letter-spacing:.08em; }
@@ -76,8 +89,14 @@
 <main>
   <section><h2>Progreso</h2><ul class="pasos" id="pasos"></ul><div id="pregunta"></div></section>
   <section><h2>Biografías por red</h2><div id="bios" class="vacio">Aún no están hechas.</div></section>
-  <section><h2>Cuentas</h2><table id="cuentas"></table><p class="vacio" style="font-size:14px">Las crea usted (con su móvil y
-    contraseña); el asistente le guía y apunta el usuario.</p></section>
+  <section><h2>Cuentas</h2><table id="cuentas"></table><p class="vacio" style="font-size:14px">Pincha en una cuenta para
+    abrirla. Las que faltan las creas tú con «Crear» (tu móvil y tu contraseña) y luego pulsas «Ya la tengo».</p></section>
+  <section class="ancha"><h2>Correo de Asuka</h2>
+    <div class="barra"><span id="correo-estado" class="vacio">Cargando…</span>
+      <a class="boton" href="https://mail.google.com/" target="_blank" rel="noopener">Abrir Gmail</a>
+      <button id="correo-recargar">Actualizar</button></div>
+    <div class="correo"><ul id="correo-lista"></ul><article id="correo-leer" class="vacio">Pincha en un correo para leerlo.</article></div>
+  </section>
   <section><h2>Retratos</h2><div class="rejilla" id="retratos"></div></section>
   <section><h2>Material del personaje</h2>
     <p class="vacio" style="font-size:14px;margin-top:0" id="mezcla">Verde, ámbar y rojo: la mezcla con que salen en los
@@ -138,10 +157,27 @@ function pintar(d) {
   const tb = $("cuentas"); tb.textContent = "";
   for (const [k, n] of Object.entries(d.redes)) {
     const cu = (d.cuentas || {})[k] || {};
+    const en = (d.enlaces || {})[k] || {};
     const tr = el("tr");
-    tr.appendChild(el("td", n));
-    tr.appendChild(el("td", cu.usuario ? "@" + cu.usuario : "—"));
-    tr.appendChild(el("td", cu.estado || "por crear", "estado " + (cu.estado || "")));
+    const creada = cu.estado === "creada" && cu.usuario;
+    const enlace = (txt, url) => { const a = el("a", txt); a.href = url; a.target = "_blank"; a.rel = "noopener"; return a; };
+    const td1 = el("td"); td1.appendChild(creada ? enlace(n, en.perfil.replace("{u}", cu.usuario)) : el("span", n)); tr.appendChild(td1);
+    const td2 = el("td"); td2.appendChild(creada ? enlace("@" + cu.usuario, en.perfil.replace("{u}", cu.usuario)) : el("span", "—")); tr.appendChild(td2);
+    const td3 = el("td");
+    if (creada) td3.appendChild(el("span", "creada", "estado creada"));
+    else {
+      const c = enlace("Crear", en.alta); c.className = "boton"; td3.appendChild(c);
+      const b = el("button", "Ya la tengo");
+      b.onclick = async () => {
+        const u = prompt("Usuario que te ha quedado en " + n + " (sin @):", (d.id || {}).usuario || "");
+        if (!u) return;
+        await fetch("/nexus/cuenta", { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" },
+                                       body: JSON.stringify({ red: k, usuario: u }) });
+        ultimo = ""; cargar();
+      };
+      td3.appendChild(b);
+    }
+    tr.appendChild(td3);
     tb.appendChild(tr);
   }
   // retratos
@@ -246,6 +282,36 @@ function pintar(d) {
   }
 }
 let ultimo = "";
+// correo del personaje (solo lectura)
+async function correo(forzar) {
+  const est = $("correo-estado");
+  try {
+    const r = await (await fetch("/nexus/correo?t=" + Date.now())).json();
+    if (!r.configurado) {
+      est.textContent = "Sin conectar todavía: en el portátil, ejecuta  bash ~/jarvis/configurar_correo_nexus.sh  (te explica cómo crear la contraseña de aplicación de Google).";
+      return;
+    }
+    const nuevos = r.correos.filter(c => !c.leido).length;
+    est.textContent = r.correos.length + " correos recientes" + (nuevos ? " · " + nuevos + " sin leer" : "") + (r.error ? " · aviso: " + r.error : "");
+    const ul = $("correo-lista"); ul.textContent = "";
+    for (const c of r.correos) {
+      const li = el("li", null, c.leido ? "" : "nuevo");
+      li.appendChild(el("b", c.asunto)); li.appendChild(el("small", c.de + " · " + c.fecha));
+      li.onclick = async () => {
+        ul.querySelectorAll("li.sel").forEach(x => x.classList.remove("sel")); li.classList.add("sel");
+        const a = $("correo-leer"); a.className = ""; a.textContent = "Abriendo…";
+        const m = await (await fetch("/nexus/correo/" + encodeURIComponent(c.uid))).json();
+        a.textContent = "";
+        if (m.error) { a.textContent = "No se ha podido abrir: " + m.error; return; }
+        a.appendChild(el("h3", m.asunto));
+        a.appendChild(el("div", "De: " + m.de + "\nPara: " + m.para + "\n" + m.fecha, "vacio"));
+        if (m.adjuntos && m.adjuntos.length) a.appendChild(el("div", "Adjuntos: " + m.adjuntos.join(", "), "vacio"));
+        a.appendChild(el("p", m.texto));
+      };
+      ul.appendChild(li);
+    }
+  } catch (e) { est.textContent = "El asistente se está reiniciando…"; }
+}
 async function cargar() {
   try {
     const txt = await (await fetch("/nexus/datos?t=" + Date.now())).text();
@@ -254,6 +320,8 @@ async function cargar() {
   } catch (e) { /* el asistente se está reiniciando */ }
 }
 cargar(); setInterval(cargar, 10000);
+correo(); setInterval(correo, 120000);
+$("correo-recargar").onclick = () => correo(true);
 </script>
 </body>
 </html>

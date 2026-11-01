@@ -52,12 +52,16 @@ VOZ_DESC = ["Young adult woman from Spain, about 24, warm slightly husky mid-low
 MEZCLA = {"publica": 60, "revisar": 35, "no": 5}
 VOZ_TEXTO = "Hola, soy {n}. Soy un personaje creado con inteligencia artificial, y no, no vengo a caerte bien."
 REDES = {
-    "tiktok": {"nombre": "TikTok", "alta": "https://www.tiktok.com/signup", "bio": 80},
-    "instagram": {"nombre": "Instagram", "alta": "https://www.instagram.com/accounts/emailsignup/", "bio": 150},
-    "youtube": {"nombre": "YouTube", "alta": "https://www.youtube.com/create_channel", "bio": 1000},
-    "x": {"nombre": "X", "alta": "https://x.com/i/flow/signup", "bio": 160},
-    "twitch": {"nombre": "Twitch", "alta": "https://www.twitch.tv/signup", "bio": 300},
-    "pinterest": {"nombre": "Pinterest", "alta": "https://www.pinterest.es/business/create/", "bio": 500},
+    "tiktok": {"nombre": "TikTok", "alta": "https://www.tiktok.com/signup", "bio": 80,
+               "perfil": "https://www.tiktok.com/@{u}"},
+    "instagram": {"nombre": "Instagram", "alta": "https://www.instagram.com/accounts/emailsignup/", "bio": 150,
+                  "perfil": "https://www.instagram.com/{u}/"},
+    "youtube": {"nombre": "YouTube", "alta": "https://www.youtube.com/create_channel", "bio": 1000,
+                "perfil": "https://www.youtube.com/@{u}"},
+    "x": {"nombre": "X", "alta": "https://x.com/i/flow/signup", "bio": 160, "perfil": "https://x.com/{u}"},
+    "twitch": {"nombre": "Twitch", "alta": "https://www.twitch.tv/signup", "bio": 300, "perfil": "https://www.twitch.tv/{u}"},
+    "pinterest": {"nombre": "Pinterest", "alta": "https://www.pinterest.es/business/create/", "bio": 500,
+                  "perfil": "https://www.pinterest.es/{u}/"},
 }
 GUIA_ALTA = {
     "tiktok": "Regístrate con el correo del personaje y el usuario. Luego: Perfil → menú → Herramientas para creadores → "
@@ -235,6 +239,11 @@ class Nexus:
         r = self._ordenes_material(t)
         if r:
             return r
+        if re.search(r"\b(crea\w*|haz|hacer|abre)\b.*\b(cuentas|perfiles)\b", t):
+            for k, c in list(self.e["cuentas"].items()):    # las «pendiente» se vuelven a ofrecer
+                if c.get("estado") != "creada":
+                    del self.e["cuentas"][k]
+            return self._paso_cuentas()
         if re.search(r"\b(ideas?|otro video|nuevo video|haz (un|otro) video)\b", t):
             if "primer_video" not in self.e["hechos"] and self.e["paso"] != "primer_video":
                 return Respuesta("Antes de los vídeos tenemos que terminar el personaje. " + self.continuar().texto)
@@ -403,6 +412,17 @@ class Nexus:
                              f"para usar sola, {cuenta['revisar']} solo si me las apruebas, {cuenta['no']} que no subo) "
                              f"y {len(self._indice(CLIPS))} clips. Están en el panel de Nexus.")
         return None
+
+    def apuntar_cuenta(self, red: str, usuario: str) -> dict:
+        """Desde la página: la persona ha creado la cuenta y escribe el usuario que le ha quedado."""
+        red = "x" if red == "twitter" else red
+        u = re.sub(r"[^a-z0-9_.]", "", usuario.strip().lstrip("@").lower())[:30]
+        if red not in REDES or not u:
+            return {"ok": False, "error": "red o usuario no válidos"}
+        self.e["cuentas"][red] = {"estado": "creada", "usuario": u, "fecha": time.strftime("%Y-%m-%d")}
+        self._guardar()
+        self._diario("ajuste", f"Cuenta de {REDES[red]['nombre']} creada: @{u}")
+        return {"ok": True}
 
     def _resumen(self) -> str:
         hechos = [TITULOS[p] for p in ORDEN if p in self.e["hechos"]]
@@ -816,6 +836,7 @@ class Nexus:
         e["titulos"] = TITULOS
         e["orden"] = ORDEN
         e["redes"] = {k: v["nombre"] for k, v in REDES.items()}
+        e["enlaces"] = {k: {"alta": v["alta"], "perfil": v["perfil"]} for k, v in REDES.items()}
         e["retratos"] = sorted(p.name for p in (NX / "retratos").glob("*.jpg")) if (NX / "retratos").exists() else []
         e["perfil"] = (NX / "perfil.jpg").exists()
         e["referencias"] = self._indice(REF)
