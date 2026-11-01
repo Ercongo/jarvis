@@ -45,6 +45,16 @@
   dl { margin:0; } dt { color:var(--cian); margin-top:8px; } dd { margin:2px 0 0 0; color:var(--tinta); }
   .ocupado { color:var(--oro); }
   section.ancha { grid-column:1 / -1; }
+  .cola { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px; }
+  .item { border:1px solid var(--linea); background:#060c16; padding:10px; display:flex; flex-direction:column; gap:6px; }
+  .item.publicado { opacity:.55; } .item.descartado { display:none; }
+  .item img, .item video { width:100%; aspect-ratio:4/5; object-fit:cover; display:block; }
+  .item .red { font:700 12px Orbitron, sans-serif; letter-spacing:.15em; color:var(--cian); }
+  .item textarea, .com textarea { width:100%; min-height:90px; background:#03060b; color:var(--tinta);
+    border:1px solid var(--linea); font:500 15px Rajdhani; padding:6px; resize:vertical; }
+  .item .botones, .com .botones { display:flex; flex-wrap:wrap; gap:6px; }
+  .com { border-bottom:1px solid var(--linea); padding:8px 0; } .com b { color:var(--cian); }
+  .ok-txt { color:var(--ok); } .err-txt { color:var(--rojo); }
   .portadas { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:14px; }
   .portadas figure { margin:0; } .portadas img { width:100%; border:1px solid var(--linea); display:block; }
   .portadas figcaption { font-size:14px; color:var(--tenue); margin-top:4px; }
@@ -91,6 +101,13 @@
   </div>
 </header>
 <main>
+  <section class="ancha"><h2>Hoy toca publicar</h2>
+    <div class="barra"><span id="cola-estado" class="vacio"></span>
+      <button id="plan-nuevo">Preparar el plan de hoy</button></div>
+    <div class="cola" id="cola"></div></section>
+  <section><h2>YouTube de Asuka</h2><div id="yt"></div></section>
+  <section><h2>Comentarios</h2><div id="coms" class="vacio">Cuando YouTube esté conectado, aquí salen los comentarios
+    con la respuesta que propone Asuka (la cambias si quieres y pulsas «Enviar»).</div></section>
   <section><h2>Progreso</h2><ul class="pasos" id="pasos"></ul><div id="pregunta"></div></section>
   <section><h2>Biografías por red</h2><div id="bios" class="vacio">Aún no están hechas.</div></section>
   <section><h2>Cuentas</h2><table id="cuentas"></table><p class="vacio" style="font-size:14px">Pincha en una cuenta para
@@ -195,6 +212,70 @@ function pintar(d) {
     f.appendChild(i); f.appendChild(el("figcaption", r.replace(".jpg", "").replace("candidata", "Candidata "))); rj.appendChild(f);
   });
   if (!rj.childNodes.length) rj.appendChild(el("p", "Aún no hay retratos.", "vacio"));
+  // hoy toca
+  const co = $("cola"); co.textContent = "";
+  const cola = d.cola || [];
+  const pend = cola.filter(c => c.estado === "pendiente").length;
+  $("cola-estado").textContent = cola.length ? pend + " por publicar · " + (cola.length - pend) + " hechas hoy" : "Todavía no hay plan para hoy.";
+  for (const c of cola) {
+    const it = el("div", null, "item " + c.estado);
+    it.appendChild(el("div", ((d.redes || {})[c.red] || c.red) + (c.hora ? " · " + c.hora : "") + (c.tipo === "video" ? " · vídeo" : ""), "red"));
+    const m = c.tipo === "video" ? el("video") : el("img");
+    m.src = archivo(c.archivo); if (c.tipo === "video") { m.controls = true; m.preload = "none"; } else m.loading = "lazy";
+    it.appendChild(m);
+    if (c.titulo) it.appendChild(el("b", c.titulo));
+    const ta = el("textarea"); ta.value = c.texto; it.appendChild(ta);
+    const bs = el("div", null, "botones");
+    const bc = el("button", "Copiar texto"); bc.onclick = () => copiar(ta.value, bc); bs.appendChild(bc);
+    const bd = el("a", "Descargar"); bd.className = "boton"; bd.href = archivo(c.archivo); bd.download = c.archivo.split("/").pop(); bs.appendChild(bd);
+    const sub = (d.subida || {})[c.red];
+    if (sub) { const a = el("a", "Abrir " + ((d.redes || {})[c.red] || c.red)); a.className = "boton"; a.href = sub; a.target = "_blank"; a.rel = "noopener"; bs.appendChild(a); }
+    if (c.estado === "pendiente") {
+      if (c.red === "youtube" && d.youtube && d.youtube.conectado) {
+        const by = el("button", "Publicar en YouTube ya");
+        by.onclick = async () => { by.textContent = "Subiendo…"; by.disabled = true; await accion({ tipo: "youtube", id: c.id }); };
+        bs.appendChild(by);
+      }
+      const bh = el("button", "Hecho");
+      bh.onclick = () => { const u = prompt("Enlace de la publicación (si lo tienes; si no, deja vacío):", ""); if (u !== null) accion({ tipo: "hecho", id: c.id, url: u }); };
+      bs.appendChild(bh);
+      const bx = el("button", "Descartar"); bx.onclick = () => accion({ tipo: "descartar", id: c.id }); bs.appendChild(bx);
+    } else if (c.url) { const a = el("a", "Ver publicación"); a.href = c.url; a.target = "_blank"; a.className = "boton"; bs.appendChild(a); }
+    it.appendChild(bs); co.appendChild(it);
+  }
+  // youtube
+  const yt = $("yt"); yt.textContent = "";
+  const y = d.youtube || {};
+  if (y.conectado) {
+    const ca = y.canal || {};
+    const a = el("a", ca.titulo || "Canal"); a.href = ca.url || "#"; a.target = "_blank"; a.style.color = "var(--cian)";
+    yt.appendChild(a);
+    yt.appendChild(el("div", (ca.suscriptores || 0) + " suscriptores · " + (ca.videos || 0) + " vídeos · " + (ca.vistas || 0) + " visualizaciones", "vacio"));
+    const bp = el("button", "Personalizar canal (descripción y banner)"); bp.onclick = () => { bp.textContent = "Haciendo…"; orden("nexus personaliza los perfiles"); };
+    yt.appendChild(bp);
+  } else {
+    yt.appendChild(el("p", "Sin conectar. Conectado, Asuka cambia ella misma el banner y la descripción, sube los Shorts y lee los comentarios.", "vacio"));
+    const a = el("a", "Conectar YouTube de Asuka"); a.className = "boton"; a.href = "/nexus/youtube/conectar"; a.target = "_blank"; yt.appendChild(a);
+  }
+  // comentarios
+  const cs = d.comentarios || [];
+  if (cs.length) {
+    const cc = $("coms"); cc.textContent = ""; cc.className = "";
+    for (const c of cs.slice().reverse()) {
+      const b = el("div", null, "com");
+      b.appendChild(el("b", c.autor)); b.appendChild(el("span", " · " + c.fecha, "vacio"));
+      b.appendChild(el("div", c.texto));
+      if (c.respondido) b.appendChild(el("div", "Respondido: " + c.respondido, "ok-txt"));
+      else if (c.propuesta !== undefined) {
+        const ta = el("textarea"); ta.value = c.propuesta || ""; ta.placeholder = "Sin respuesta propuesta (spam o insulto). Escribe una si quieres."; b.appendChild(ta);
+        const bs = el("div", null, "botones");
+        const be = el("button", "Enviar"); be.onclick = () => accion({ tipo: "responder", id: c.id, texto: ta.value }); bs.appendChild(be);
+        const bi = el("button", "Ignorar"); bi.onclick = () => accion({ tipo: "ignorar", id: c.id }); bs.appendChild(bi);
+        b.appendChild(bs);
+      }
+      cc.appendChild(b);
+    }
+  }
   // portadas
   const po = $("portadas"); po.textContent = "";
   (d.portadas || []).forEach((p) => {
@@ -303,6 +384,17 @@ function pintar(d) {
   }
 }
 let ultimo = "";
+async function accion(datos) {
+  const r = await (await fetch("/nexus/accion", { method: "POST",
+    headers: { "Content-Type": "application/json", "X-Jarvis": "1" }, body: JSON.stringify(datos) })).json();
+  if (!r.ok) alert("No se ha podido: " + (r.error || "error"));
+  ultimo = ""; cargar(); return r;
+}
+async function orden(texto) {
+  await fetch("/orden", { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" },
+                          body: JSON.stringify({ texto }) });
+  ultimo = ""; cargar();
+}
 // correo del personaje (solo lectura)
 async function correo(forzar) {
   const est = $("correo-estado");
@@ -341,6 +433,7 @@ async function cargar() {
   } catch (e) { /* el asistente se está reiniciando */ }
 }
 cargar(); setInterval(cargar, 10000);
+$("plan-nuevo").onclick = (ev) => { ev.target.textContent = "Preparando… (1-2 min)"; orden("nexus plan de hoy"); };
 correo(); setInterval(correo, 120000);
 $("correo-recargar").onclick = () => correo(true);
 </script>

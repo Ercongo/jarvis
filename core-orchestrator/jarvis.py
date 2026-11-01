@@ -412,10 +412,27 @@ class Interfaz:
                     self.send_header("Location", destino)
                     self.send_header("Cache-Control", "no-store")
                     self.end_headers()
+                elif self.path == "/nexus/youtube/conectar" and ui.nexus:
+                    try:
+                        destino = ui.nexus.youtube.url_permiso()
+                    except Exception as e:
+                        self._enviar(200, _pagina_google(False, f"No puedo conectar YouTube todavía: {e}."),
+                                     "text/html; charset=utf-8")
+                        return
+                    self.send_response(302)
+                    self.send_header("Location", destino)
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
                 elif (self.path == "/google" or self.path.startswith("/google?")) and ui.google:
                     import urllib.parse as up
                     params = {k: v[0] for k, v in up.parse_qs(up.urlsplit(self.path).query).items()}
-                    ok, mensaje = ui.google.recibir_codigo(params)
+                    yt = getattr(ui.nexus, "youtube", None) if ui.nexus else None
+                    if yt is not None and yt.es_mio(params.get("state", "")):
+                        ok, mensaje = yt.recibir_codigo(params)    # el permiso de YouTube del personaje
+                        if ok and ui.nexus:
+                            ui.nexus.youtube_conectado()
+                    else:
+                        ok, mensaje = ui.google.recibir_codigo(params)
                     self._enviar(200, _pagina_google(ok, mensaje), "text/html; charset=utf-8")
                 elif self.path == "/eventos":
                     self.send_response(200)
@@ -483,6 +500,15 @@ class Interfaz:
                         self._enviar(*r)
                     else:
                         self.send_error(404)
+                    return
+                if self.path == "/nexus/accion" and ui.nexus and self.headers.get("X-Jarvis") == "1":
+                    # la página de Asuka: «hecho», «descartar», «publicar en YouTube», «responder» un comentario
+                    n = int(self.headers.get("Content-Length") or 0)
+                    try:
+                        r = ui.nexus.accion(json.loads(self.rfile.read(min(n, 20000)) or b"{}"))
+                    except Exception as e:
+                        r = {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+                    self._enviar(200, json.dumps(r, ensure_ascii=False).encode(), "application/json")
                     return
                 if self.path == "/nexus/cuenta" and ui.nexus and self.headers.get("X-Jarvis") == "1":
                     # la página de Asuka: «ya la he creado» en una red → se apunta el usuario

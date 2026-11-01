@@ -40,6 +40,15 @@ from sistema import Respuesta
 NX = DATOS / "nexus"
 ESTADO = NX / "estado.json"
 REF, CLIPS = NX / "referencias", NX / "clips"
+SUBIR = {   # dónde se publica a mano en cada red (mientras no haya conexión oficial)
+    "tiktok": {"subir": "https://www.tiktok.com/tiktokstudio/upload"},
+    "instagram": {"subir": "https://www.instagram.com/"},
+    "youtube": {"subir": "https://studio.youtube.com/"},
+    "x": {"subir": "https://x.com/compose/post"},
+    "twitch": {"subir": "https://dashboard.twitch.tv/"},
+    "pinterest": {"subir": "https://www.pinterest.es/pin-creation-tool/"},
+    "facebook": {"subir": "https://www.facebook.com/"},
+}
 DESCARGAS = [Path.home() / "Descargas", Path.home() / "Downloads"]
 WEBS_CLIP = {"deevid": ("DeeVid", "https://deevid.ai/es/model/h3"), "opengen": ("OpenGen", "https://opengen.ai/video"),
              "viggle": ("Viggle", "https://viggle.ai")}
@@ -146,6 +155,13 @@ class Nexus:
         self.ocupado = ""
         NX.mkdir(parents=True, exist_ok=True)
         self.e = self._leer()
+        try:
+            from nexus_youtube import YouTube
+            self.youtube = YouTube(log)
+        except Exception as ex:                            # sin módulo o sin Google: Nexus sigue igual
+            self.youtube = None
+            log(f"nexus: YouTube no disponible ({ex})")
+        threading.Thread(target=self._rutina_diaria, daemon=True, name="nexus-dia").start()
 
     # ---------------------------------------------------------------- estado
     def _leer(self) -> dict:
@@ -432,6 +448,24 @@ class Nexus:
             self._diario("ajuste", f"Voz del personaje: la {m.group(1)}", ruta=str(NX / "voces" / f"voz{m.group(1)}_muestra.wav"))
             return Respuesta(f"Hecho: desde ahora {self.e['id'].get('nombre', 'el personaje')} habla con la voz "
                              f"{m.group(1)} en los vídeos.")
+        if re.search(r"\bconecta\w* (el |su )?youtube\b", t):
+            if not self.youtube:
+                return Respuesta("No tengo el módulo de YouTube.")
+            abrir_web("http://127.0.0.1:8765/nexus/youtube/conectar")
+            return Respuesta("Te abro Google: entra con la cuenta de Asuka y pulsa «Permitir». Si sale «acceso "
+                             "bloqueado», antes hay que añadir su Gmail como usuario de prueba en Google Cloud.")
+        if re.search(r"\bpersonaliza\w*\b|\bactualiza\w* (los |sus )?perfiles\b", t):
+            return Respuesta(self.personalizar())
+        if re.search(r"\b(que publico|plan (de|del) (hoy|dia)|que toca hoy|publicaciones de hoy)\b", t):
+            return Respuesta(self.plan_del_dia(forzar="otra vez" in t or "nuevo" in t))
+        if re.search(r"\bcomentarios\b", t):
+            n = self.leer_comentarios()
+            pend = [c for c in self.e.get("comentarios", []) if c.get("propuesta") and not c.get("respondido")
+                    and not c.get("ignorado")]
+            return Respuesta((f"{n} comentarios nuevos. " if n else "") + (f"Hay {len(pend)} con respuesta propuesta en "
+                             "la página de Asuka." if pend else "No hay comentarios por contestar.")
+                             + ("" if self.youtube and self.youtube.conectado else " (Solo leo YouTube cuando esté "
+                                                                                   "conectado.)"))
         if re.search(r"\b(portadas?|banners?|cabeceras?|fotos? de perfil)\b", t):
             return Respuesta(self.hacer_portadas())
         if re.search(r"\bmaterial\b", t):
@@ -442,6 +476,188 @@ class Nexus:
                              f"para usar sola, {cuenta['revisar']} solo si me las apruebas, {cuenta['no']} que no subo) "
                              f"y {len(self._indice(CLIPS))} clips. Están en el panel de Nexus.")
         return None
+
+    # ================================================================ usar los perfiles
+    def _humano(self, texto: str, tipo: str, tono: str = "", limite: int | None = None) -> str:
+        from nexus_humano import humanizar
+        return humanizar(texto, self.cerebro, tono or self.e["id"].get("biblia", {}).get("tono", ""), tipo, limite)
+
+    def _foto_mezcla(self, usadas: set) -> dict | None:
+        """Una foto según la mezcla (verde/ámbar/roja), sin repetir las de los últimos días."""
+        mezcla = self.e.get("mezcla") or MEZCLA
+        recientes = set(self.e.get("fotos_usadas", [])[-25:]) | usadas
+        todas, _ = self._material(("publica", "revisar", "no"))
+        cats = [k for k in mezcla if mezcla[k] > 0]
+        if not cats or not todas:
+            return None
+        primera = random.choices(cats, weights=[mezcla[k] for k in cats])[0]
+        for cat in [primera] + [k for k in cats if k != primera]:
+            libres = [f for f in todas if f.get("apta") == cat and f["archivo"] not in recientes]
+            if libres:
+                f = random.choice(libres)
+                usadas.add(f["archivo"])
+                self.e["fotos_usadas"] = (self.e.get("fotos_usadas", []) + [f["archivo"]])[-200:]
+                return f
+        return random.choice(todas)
+
+    def plan_del_dia(self, forzar: bool = False) -> str:
+        """Lo que se publica hoy en cada red: textos ya humanizados, foto o vídeo, y la hora buena."""
+        hoy = time.strftime("%Y-%m-%d")
+        if not forzar and any(c.get("dia") == hoy for c in self.e.get("cola", [])):
+            return "El plan de hoy ya está hecho; lo tienes en la página de Asuka."
+        b = self.e["id"].get("biblia", {})
+        usadas: set = set()
+        fotos = {k: self._foto_mezcla(usadas) for k in ("x", "instagram", "facebook", "pinterest")}
+        desc = {k: (f["escena"] if f else "") for k, f in fotos.items()}
+        d = self._ia("Eres community manager de una creadora de contenido española. Devuelve SOLO JSON.",
+                     f"Creadora: {self.e['id'].get('nombre')}. {b.get('resumen', BASE)} Tono: {b.get('tono', '')}. "
+                     f"Regla: {TRANSPARENCIA} Hoy es {time.strftime('%A %d de %B')}. Escribe las publicaciones de hoy, "
+                     f"cada una sobre su foto: x (foto: {desc['x']}; post de máx 260 caracteres), instagram (foto: "
+                     f"{desc['instagram']}; caption 1-3 frases + 5 hashtags), facebook (foto: {desc['facebook']}; post "
+                     f"corto), pinterest (foto: {desc['pinterest']}; titulo máx 90 y descripcion máx 400 con palabras "
+                     "que se buscan). Nada de anuncios ni frases hechas. JSON: {\"x\": \"…\", \"instagram\": \"…\", "
+                     "\"facebook\": \"…\", \"pinterest_titulo\": \"…\", \"pinterest\": \"…\", "
+                     "\"horas\": {\"x\": \"HH:MM\", \"instagram\": \"HH:MM\", \"facebook\": \"HH:MM\", \"pinterest\": \"HH:MM\"}}",
+                     max_tokens=1200)
+        tono = b.get("tono", "")
+        cola = [c for c in self.e.get("cola", []) if c.get("estado") == "pendiente" and c.get("dia") != hoy][-20:]
+        lim = {"x": 270, "instagram": 600, "facebook": 600, "pinterest": 450}
+        for k, f in fotos.items():
+            if not f or not d.get(k):
+                continue
+            item = {"id": f"{hoy}-{k}", "dia": hoy, "red": k, "tipo": "foto", "archivo": f"referencias/{f['archivo']}",
+                    "texto": self._humano(d[k], "post" if k in ("x", "facebook") else "caption", tono, lim[k]),
+                    "hora": (d.get("horas") or {}).get(k, ""), "estado": "pendiente"}
+            if k == "pinterest":
+                item["titulo"] = self._humano(d.get("pinterest_titulo", ""), "post", tono, 90)
+            cola.append(item)
+        for i, v in enumerate(self.e.get("videos", [])):          # vídeos aprobados aún sin publicar
+            if not v.get("aprobado"):
+                continue
+            meta = {}
+            try:
+                meta = json.loads((Path(v["carpeta"]) / "publicacion.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError, KeyError):
+                pass
+            texto = (meta.get("caption", "") + "\n" + " ".join(meta.get("hashtags", [])[:5])).strip()
+            for red in ("tiktok", "instagram", "youtube"):
+                if red in v.get("publicado", {}) or any(c["id"] == f"v{i}-{red}" for c in cola):
+                    continue
+                cola.append({"id": f"v{i}-{red}", "dia": hoy, "red": red, "tipo": "video",
+                             "archivo": v["ruta"].split("/nexus/", 1)[-1], "texto": texto,
+                             "titulo": meta.get("titulo_youtube", v["titulo"]), "video": i, "estado": "pendiente",
+                             "hora": "19:00" if red != "youtube" else "17:00"})
+        self.e["cola"] = cola
+        self._guardar()
+        n = sum(1 for c in cola if c["dia"] == hoy)
+        self._diario("ajuste", f"Plan de hoy: {n} publicaciones preparadas")
+        return (f"Plan de hoy listo: {n} publicaciones con su foto o vídeo, el texto y la hora. Están en la página de "
+                "Asuka, en «Hoy toca»: copias el texto, abres la red y lo subes; luego pulsas «Hecho».")
+
+    def accion(self, j: dict) -> dict:
+        """Botones de la página: publicado / descartar / publicar en YouTube / responder un comentario."""
+        tipo = j.get("tipo")
+        if tipo in ("hecho", "descartar", "youtube"):
+            c = next((x for x in self.e.get("cola", []) if x["id"] == j.get("id")), None)
+            if not c:
+                return {"ok": False, "error": "no está en la cola"}
+            if tipo == "descartar":
+                c["estado"] = "descartado"
+            elif tipo == "youtube":
+                if not (self.youtube and self.youtube.conectado):
+                    return {"ok": False, "error": "YouTube sin conectar"}
+                r = self.youtube.subir(NX / c["archivo"], c.get("titulo", "")[:100], c["texto"],
+                                       [h.lstrip("#") for h in re.findall(r"#\w+", c["texto"])])
+                c.update(estado="publicado", url=r["url"], privacidad=r["privacidad"])
+            else:
+                c.update(estado="publicado", url=str(j.get("url") or "")[:300])
+            if c["estado"] == "publicado":
+                if c.get("tipo") == "video":
+                    self.e["videos"][c["video"]].setdefault("publicado", {})[c["red"]] = c.get("url", "") or "sí"
+                self._diario("publicado", f"Publicado en {REDES[c['red']]['nombre']}: {c['texto'][:120]}",
+                             ruta=str(NX / c["archivo"]), url=c.get("url", ""))
+            self._guardar()
+            return {"ok": True, "url": c.get("url", "")}
+        if tipo in ("responder", "ignorar"):
+            com = next((x for x in self.e.get("comentarios", []) if x["id"] == j.get("id")), None)
+            if not com:
+                return {"ok": False, "error": "comentario no encontrado"}
+            if tipo == "responder":
+                texto = str(j.get("texto") or com.get("propuesta") or "").strip()
+                if not texto:
+                    return {"ok": False, "error": "respuesta vacía"}
+                self.youtube.responder(com["id"], texto)
+                com.update(respondido=texto)
+                self._diario("comentario", f"Respondido a {com['autor']}: {texto}")
+            else:
+                com["ignorado"] = True
+            self._guardar()
+            return {"ok": True}
+        return {"ok": False, "error": "acción desconocida"}
+
+    def leer_comentarios(self) -> int:
+        """Comentarios nuevos de YouTube, con una respuesta propuesta en su voz (se envía con un clic)."""
+        if not (self.youtube and self.youtube.conectado):
+            return 0
+        vistos = {c["id"] for c in self.e.get("comentarios", [])}
+        nuevos = [c for c in self.youtube.comentarios() if c["id"] not in vistos]
+        b = self.e["id"].get("biblia", {})
+        for c in nuevos:
+            r = self._ia("Contestas comentarios como la creadora. Devuelve SOLO JSON.",
+                         f"Creadora: {self.e['id'].get('nombre')}. {b.get('resumen', '')} Tono: {b.get('tono', '')}. "
+                         f"Reglas: {b.get('reglas_conversacion', TRANSPARENCIA)} No respondas a insultos ni spam "
+                         f"(responder=false). Comentario de {c['autor']}: «{c['texto'][:500]}». JSON: {{\"responder\": "
+                         "true/false, \"respuesta\": \"…\"}", max_tokens=300)
+            c["propuesta"] = self._humano(r.get("respuesta", ""), "respuesta") if r.get("responder") else ""
+            self._diario("comentario", f"{c['autor']} en YouTube: {c['texto'][:300]}")
+        if nuevos:
+            self.e["comentarios"] = (self.e.get("comentarios", []) + nuevos)[-300:]
+            self._guardar()
+        return len(nuevos)
+
+    def youtube_conectado(self) -> None:
+        self._diario("ajuste", "YouTube del personaje conectado")
+        threading.Thread(target=lambda: self.avisar(self.personalizar()), daemon=True).start()
+
+    def personalizar(self) -> str:
+        """Deja los perfiles al día: portadas, bios y, donde hay conexión oficial, lo cambia ella misma."""
+        partes = [self.hacer_portadas()]
+        bios = self.e["id"].get("bios")
+        if self.youtube and self.youtube.conectado:
+            try:
+                b = self.e["id"].get("biblia", {})
+                desc = (bios or {}).get("youtube") or b.get("resumen", "")
+                pil = [p.get("tema", str(p)) if isinstance(p, dict) else str(p) for p in b.get("pilares", [])]
+                hecho = self.youtube.personalizar(desc, pil + ["gaming", "anime", "gym", "tecnología", "shorts"],
+                                                  NX / "portadas" / "youtube_2560x1440.jpg")
+                partes.append("En YouTube he cambiado yo misma: " + ", ".join(hecho) + ".")
+                self._diario("ajuste", "YouTube personalizado: " + ", ".join(hecho))
+            except Exception as ex:
+                partes.append(f"YouTube no me ha dejado cambiarlo ahora ({str(ex)[:120]}).")
+        else:
+            partes.append("Para que YouTube lo cambie yo sola, dime «nexus, conecta YouTube».")
+        if not bios:
+            partes.append("Las bios las escribo cuando apruebes la biblia (contesta «sí» a su pregunta).")
+        partes.append("Foto, portada y bio del resto de redes: en la página de Asuka, con botón de descargar y copiar.")
+        return " ".join(partes)
+
+    def _rutina_diaria(self) -> None:
+        """Cada día a partir de las 10:00 prepara el plan; cada media hora mira comentarios de YouTube."""
+        time.sleep(180)
+        while True:
+            try:
+                hoy = time.strftime("%Y-%m-%d")
+                if (int(time.strftime("%H")) >= 10 and self.e.get("id", {}).get("biblia")
+                        and not any(c.get("dia") == hoy for c in self.e.get("cola", []))):
+                    txt = self.plan_del_dia()
+                    self.avisar("Asuka: " + txt)
+                n = self.leer_comentarios()
+                if n:
+                    self.avisar(f"Asuka tiene {n} comentario{'s' if n > 1 else ''} nuevo{'s' if n > 1 else ''} en "
+                                "YouTube, con la respuesta propuesta en su página.")
+            except Exception as ex:
+                self.log(f"nexus: rutina diaria: {ex!r}")
+            time.sleep(1800)
 
     def hacer_portadas(self) -> str:
         """Foto de perfil y portadas de cada red con sus fotos verdes (gaming, gimnasio y calle, por ese orden)."""
@@ -665,8 +881,8 @@ class Nexus:
                      "\"…\", \"x\": \"…\", \"twitch\": \"…\", \"pinterest\": \"…\", \"facebook\": \"…\", \"email_firma\": \"…\"}",
                      max_tokens=1500)
         for k, v in REDES.items():
-            if k in d and len(d[k]) > v["bio"]:
-                d[k] = d[k][: v["bio"] - 1].rsplit(" ", 1)[0] + "…"
+            if k in d:
+                d[k] = self._humano(d[k], "bio", b.get("tono", ""), v["bio"])
         self.e["id"]["bios"] = d
         self._guardar()
         ej = d.get("instagram", "")
@@ -822,6 +1038,10 @@ class Nexus:
                          f"\"titulo_youtube\" (máx 90 car.). Regla del personaje: {TRANSPARENCIA} "
                          "JSON: {\"titulo\": …, \"escenas\": [{\"texto\": "
                          "…, \"visual_en\": …}], \"caption\": …, \"hashtags\": […], \"titulo_youtube\": …}", max_tokens=2000)
+            tono = b.get("tono", "")
+            for esc in g.get("escenas", []):                # que suene a ella, no a texto de IA
+                esc["texto"] = self._humano(esc.get("texto", ""), "guion", tono)
+            g["caption"] = self._humano(g.get("caption", ""), "caption", tono, 300)
             carpeta = NX / "videos" / time.strftime("%Y%m%d-%H%M%S")
             reserva = (lambda tx, ruta: voz_piper(self.voz.voz, tx, ruta)) if self.voz is not None else None
             self._recoger_descargas()
@@ -906,13 +1126,17 @@ class Nexus:
         e["retratos"] = sorted(p.name for p in (NX / "retratos").glob("*.jpg")) if (NX / "retratos").exists() else []
         e["perfil"] = (NX / "perfil.jpg").exists()
         e["portadas"] = self.e.get("portadas", [])
+        e["cola"] = [c for c in self.e.get("cola", []) if c.get("estado") == "pendiente"
+                     or c.get("dia") == time.strftime("%Y-%m-%d")]
+        e["youtube"] = self.youtube.estado() if self.youtube else {"conectado": False}
+        e["comentarios"] = [c for c in self.e.get("comentarios", []) if not c.get("ignorado")][-60:]
+        e["subida"] = {k: v["subir"] for k, v in SUBIR.items()}
         pp = NX / "portadas" / "perfil_1080.jpg"
         e["portadas_v"] = str(int(pp.stat().st_mtime)) if pp.exists() else ""
         e["referencias"] = self._indice(REF)
         e["clips"] = self._indice(CLIPS)
         e["mezcla"] = self.e.get("mezcla") or MEZCLA
         e["diario"] = self._leer_diario()
-        e["comentarios"] = self.e.get("comentarios", [])
         tipos = {".jpg", ".jpeg", ".png", ".mp4", ".wav"}
         e["archivos"] = sorted((str(f.relative_to(NX)) for f in NX.rglob("*") if f.suffix.lower() in tipos
                                 and f.is_file() and not f.name.startswith(("esc", "junto", "voz", "img"))),
