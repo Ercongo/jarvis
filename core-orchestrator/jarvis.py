@@ -1088,7 +1088,12 @@ class Jarvis:
         self.ui.nexus = self.nexus
         threading.Timer(90, self.nexus.recordar).start()   # una pregunta de Nexus sin contestar se repite al arrancar
         from herramientas import abrir_web as _abrir
-        threading.Timer(45, lambda: _abrir("http://127.0.0.1:8765/nexus")).start()   # la página de Asuka, al arrancar
+        try:                                            # la página de Asuka, solo al encender el portátil
+            recien_encendido = float(Path("/proc/uptime").read_text().split()[0]) < 900
+        except (OSError, ValueError):
+            recien_encendido = True
+        if recien_encendido:                            # (no una pestaña nueva en cada reinicio del asistente)
+            threading.Timer(45, lambda: _abrir("http://127.0.0.1:8765/nexus")).start()
         from visual import Visual                       # diagramas (Archify) y vídeos animados (HyperFrames)
         self.visual = Visual(self.cerebro, self.decir, log, avisar=self.tg.enviar,
                              enviar_documento=self.tg.enviar_documento,
