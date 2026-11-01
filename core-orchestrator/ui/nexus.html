@@ -91,7 +91,7 @@ function pintar(d) {
   }
   const pq = $("pregunta"); pq.textContent = "";
   if (d.ocupado) pq.appendChild(el("div", "Trabajando: " + d.ocupado + "…", "pregunta ocupado"));
-  else if (d.pregunta) pq.appendChild(el("div", "Esperando su respuesta (dígasela al asistente o por Telegram).", "pregunta"));
+  else if (d.pregunta) pq.appendChild(el("div", (d.pregunta.texto ? d.pregunta.texto + "  — " : "") + "Contésteselo al asistente (en voz o por Telegram).", "pregunta"));
   // bios
   if (id.bios) {
     const c = $("bios"); c.textContent = ""; c.className = "";

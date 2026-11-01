@@ -120,9 +120,28 @@ class Nexus:
                            total=len(ORDEN))
 
     def _preguntar(self, clave: str, texto: str, **datos) -> Respuesta:
-        self.e["pregunta"] = {"clave": clave, "t": time.time(), **datos}
+        self.e["pregunta"] = {"clave": clave, "t": time.time(), "texto": texto, **datos}
         self._guardar()
+        if not self.es_telegram():                      # que llegue también al móvil, aunque no esté delante
+            try:
+                self.avisar("Nexus pregunta: " + texto)
+            except Exception:
+                pass
         return Respuesta(texto)
+
+    def recordar(self) -> None:
+        """Al arrancar el asistente: si hay una pregunta sin contestar (de menos de un día), la repite en voz alta."""
+        q = self.e.get("pregunta") or {}
+        if q.get("texto") and time.time() - q.get("t", 0) < 86400:
+            q["t"] = time.time()                         # vuelve a contar el plazo para contestar
+            self._guardar()
+            self.decir("Del proyecto Nexus tengo una pregunta para ti. " + q["texto"])
+
+    def preguntar_ahora(self) -> None:
+        """Lanza (en voz y por Telegram) la pregunta del paso en que va el proyecto."""
+        r = self.continuar()
+        if r and r.texto:
+            self.decir(r.texto)
 
     def espera_respuesta(self) -> bool:
         p = self.e.get("pregunta")
@@ -314,7 +333,8 @@ class Nexus:
                     self.log(f"nexus: retrato {i + 1}: {ex}")
             if not hechas:
                 return "No he podido generar retratos ahora (el servicio de imágenes falla o se acabó el cupo de hoy)."
-            self.e["pregunta"] = {"clave": "retrato", "t": time.time(), "opciones": hechas}
+            self.e["pregunta"] = {"clave": "retrato", "t": time.time(), "opciones": hechas,
+                                  "texto": "¿Cuál de los retratos es el personaje? Dime el número u «otros»."}
             self._guardar()
             return (f"Tengo {len(hechas)} retratos en el panel de Nexus (y en Telegram). ¿Cuál es "
                     f"{self.e['id']['nombre']}? Dime el número, u «otros» para hacer más.")
@@ -440,7 +460,7 @@ class Nexus:
             self.enviar_documento(str(ruta), "Voz del personaje")
             import subprocess
             subprocess.Popen(["pw-play", str(ruta)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.e["pregunta"] = {"clave": "voz", "t": time.time()}
+            self.e["pregunta"] = {"clave": "voz", "t": time.time(), "texto": "¿Te vale esta voz?"}
             self._guardar()
             return f"Así suena {self.e['id']['nombre']} con {origen}. ¿Te vale esta voz?"
         self._en_hilo("voz", trabajo)
@@ -498,7 +518,8 @@ class Nexus:
             v = {"titulo": g.get("titulo", idea["titulo"]), "ruta": str(ruta), "carpeta": str(carpeta),
                  "fecha": time.strftime("%Y-%m-%d %H:%M"), "publicado": {}}
             self.e.setdefault("videos", []).append(v)
-            self.e["pregunta"] = {"clave": "video_ok", "t": time.time(), "video": len(self.e["videos"]) - 1}
+            self.e["pregunta"] = {"clave": "video_ok", "t": time.time(), "video": len(self.e["videos"]) - 1,
+                                  "texto": "¿Te gusta el vídeo? Si me dices que sí, queda listo para publicar."}
             self._guardar()
             self.enviar_documento(str(ruta), f"{v['titulo']}\n\n{g.get('caption', '')}\n{' '.join(g.get('hashtags', []))}")
             return (f"Vídeo terminado: «{v['titulo']}». Lo tienes en el panel de Nexus y en Telegram con su texto y "

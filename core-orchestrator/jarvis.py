@@ -1039,6 +1039,7 @@ class Jarvis:
                            enviar_documento=self.tg.enviar_documento,
                            es_telegram=lambda: getattr(self._canal, "tg", False))
         self.ui.nexus = self.nexus
+        threading.Timer(90, self.nexus.recordar).start()   # una pregunta de Nexus sin contestar se repite al arrancar
         from visual import Visual                       # diagramas (Archify) y vídeos animados (HyperFrames)
         self.visual = Visual(self.cerebro, self.decir, log, avisar=self.tg.enviar,
                              enviar_documento=self.tg.enviar_documento,
