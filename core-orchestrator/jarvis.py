@@ -173,7 +173,7 @@ def es_orden_fija(texto: str) -> bool:
     t = normalizar(texto).strip(" .?¿!¡")
     if not t:
         return False
-    if re.search(r"\bvoz (de asuka|de antes|normal|de siempre|de mayordomo|original)\b", t):
+    if re.search(r"\bvoz (de asuka|de antes|anterior|normal|de siempre|original|de athena)\b", t):
         return True
     # lo que trabaja con sus archivos de oficina: las reglas de oficina son exactas (abren, suman y añaden de
     # verdad); el cerebro de reserva contestaba «no tengo el contenido» o se inventaba la suma

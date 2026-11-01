@@ -37,6 +37,16 @@ def _modelo_asuka() -> Path | None:
     return None
 
 
+def _hablante(modelo: Path, sexo: str) -> int | None:
+    """El número del hablante «F» o «M» según el .onnx.json (en sharvard la mujer es el 1)."""
+    try:
+        import json
+        mapa = json.loads(Path(str(modelo) + ".json").read_text()).get("speaker_id_map") or {}
+        return mapa.get(sexo)
+    except (OSError, ValueError):
+        return None
+
+
 class VozPersonaje:
     def __init__(self, asistente, clase_voz, log=print):
         self.a, self.Voz, self.log = asistente, clase_voz, log
@@ -61,13 +71,13 @@ class VozPersonaje:
             sharvard = next(VOCES.glob("*sharvard*.onnx"), None)
             if not sharvard:
                 return Respuesta("No encuentro las voces de Piper.")
-            self._cambiar(sharvard, 0, 1.0)
-            return Respuesta("Su voz entrenada aún no está; mientras, hablo con una voz de mujer parecida. Cuando "
+            self._cambiar(sharvard, _hablante(sharvard, "F"), 1.0)
+            return Respuesta("Su voz entrenada aún no está; mientras, sigo con mi voz de mujer. Cuando "
                              "tengas los dos archivos de Kaggle, bájalos con el navegador del portátil (a Descargas) y "
                              "repíteme «pon la voz de Asuka».")
-        if re.search(r"\b(tu |la )?voz (de antes|normal|de siempre|de mayordomo|original)\b", t):
+        if re.search(r"\b(tu |la )?voz (de antes|anterior|normal|de siempre|original|de athena)\b", t):
             sharvard = next(VOCES.glob("*sharvard*.onnx"), None)
             if sharvard:
-                self._cambiar(sharvard, 1, 1.05)
+                self._cambiar(sharvard, _hablante(sharvard, "F"), 1.0)
                 return Respuesta("Vuelvo a mi voz de siempre.")
         return None
