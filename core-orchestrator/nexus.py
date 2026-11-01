@@ -50,7 +50,7 @@ VOZ_DESC = ["Young adult woman from Spain, about 24, warm slightly husky mid-low
             "Young adult woman from Spain, low smooth calm voice, deadpan and ironic, slightly raspy, confident, "
             "Castilian Spanish accent, unhurried like a late-night streamer"]
 MEZCLA = {"publica": 60, "revisar": 35, "no": 5}
-VOZ_TEXTO = "Hola, soy {n}. Soy un personaje creado con inteligencia artificial, y no, no vengo a caerte bien."
+VOZ_TEXTO = "Hola, soy {n}. Gamer, friki del anime y del gimnasio. Y no, no vengo a caerte bien."
 REDES = {
     "tiktok": {"nombre": "TikTok", "alta": "https://www.tiktok.com/signup", "bio": 80,
                "perfil": "https://www.tiktok.com/@{u}"},
@@ -72,7 +72,8 @@ GUIA_ALTA = {
                  "Pon foto y bio. (Para publicar sola necesitaré una página de Facebook enlazada: lo vemos en las conexiones.)",
     "youtube": "Entra con el Gmail del personaje y crea el canal con el nombre del personaje. Pon foto, banner y descripción "
                "del panel. En Configuración del canal → Opciones avanzadas, marca que el contenido está alterado o es sintético cuando toque.",
-    "x": "Regístrate con el correo del personaje y el usuario. Pon foto, banner y bio. En la bio ya va el aviso de IA.",
+    "x": "Regístrate con el correo del personaje y el usuario. Pon foto, banner y bio. En Configuración → Privacidad → "
+         "Contenido, marca la cuenta como automatizada/IA si te lo pide.",
     "twitch": "Regístrate con el usuario del personaje. Pon foto y bio. (Twitch es en directo: lo usaremos más adelante.)",
     "pinterest": "Crea una cuenta de empresa con el correo del personaje. Categoría: Entretenimiento. Pon foto y bio.",
     "facebook": "En Facebook el personaje va como PÁGINA, no como perfil de persona (Meta cierra los perfiles que no son "
@@ -86,7 +87,13 @@ TITULOS = {"nombre": "Nombre y usuario", "biblia": "Biblia del personaje", "retr
            "bios": "Biografías por red", "correo": "Correo del personaje", "cuentas": "Cuentas en las redes",
            "voz": "Voz del personaje", "primer_video": "Primer vídeo", "conexiones": "Publicación automática",
            "rutina": "Calendario y rutina"}
-BASE = ("Influencer virtual creada con IA (y lo dice abiertamente). Mujer joven pelirroja, gamer y friki: anime "
+# Transparencia mínima (lo que exigen las redes y la ley europea, nada más): una marca corta en la bio y la etiqueta
+# oficial «contenido generado con IA» de cada red al publicar. No lo repite en vídeos, textos ni comentarios; pero si
+# alguien pregunta en serio si es real o una IA, NUNCA lo niega: lo reconoce en una frase, en su tono, y sigue.
+TRANSPARENCIA = ("No menciona que es una IA ni que la gestiona una IA en vídeos, textos ni comentarios. Si alguien le "
+                 "pregunta en serio si es real, una persona o una IA, no lo niega nunca: lo reconoce en una frase corta, "
+                 "con humor y en su tono, y vuelve al tema.")
+BASE = ("Influencer virtual (personaje digital). Mujer joven pelirroja, gamer y friki: anime "
         "(Solo Leveling), videojuegos, gimnasio y tecnología. Aspecto fijo (el de sus fotos de referencia): pelo rojo intenso, "
         "largo y ondulado, gafas finas de montura metálica, piel clara, gargantilla negra; setup gamer con neones morados. "
         "Estética oscura y cinematográfica. Personalidad directa, "
@@ -345,7 +352,9 @@ class Nexus:
             mejor_f = max(libres_f, key=lambda f: puntos(f, visual_en), default=None)
             if mejor_c and (i == 0 or puntos(mejor_c, visual_en) >= max(1, puntos(mejor_f, visual_en) if mejor_f else 0)):
                 usadas.add(mejor_c["archivo"])
-                return "clip", mejor_c["ruta"]
+                origen = normalizar(mejor_c.get("origen", ""))
+                marca = "sin marca" not in origen and any(w in origen for w in ("deevid", "opengen", "viggle", "marca"))
+                return "clip", mejor_c["ruta"], marca
             if not mejor_f:
                 return None                                   # sin material: imagen nueva con FLUX
             usadas.add(mejor_f["archivo"])
@@ -423,6 +432,8 @@ class Nexus:
             self._diario("ajuste", f"Voz del personaje: la {m.group(1)}", ruta=str(NX / "voces" / f"voz{m.group(1)}_muestra.wav"))
             return Respuesta(f"Hecho: desde ahora {self.e['id'].get('nombre', 'el personaje')} habla con la voz "
                              f"{m.group(1)} en los vídeos.")
+        if re.search(r"\b(portadas?|banners?|cabeceras?|fotos? de perfil)\b", t):
+            return Respuesta(self.hacer_portadas())
         if re.search(r"\bmaterial\b", t):
             self._recoger_descargas()
             ind = self._indice(REF)
@@ -432,10 +443,36 @@ class Nexus:
                              f"y {len(self._indice(CLIPS))} clips. Están en el panel de Nexus.")
         return None
 
+    def hacer_portadas(self) -> str:
+        """Foto de perfil y portadas de cada red con sus fotos verdes (gaming, gimnasio y calle, por ese orden)."""
+        from nexus_portadas import generar
+        fotos, _ = self._material()
+        if not fotos:
+            return "No tengo fotos aprobadas del personaje para las portadas."
+        orden = {"gaming": 0, "gym": 1, "street": 2}
+        fotos.sort(key=lambda f: orden.get(f["escena"].split()[0], 9))
+        hechas = generar(NX, fotos, self.e["id"].get("nombre", "Nexus"))
+        self.e["portadas"] = hechas
+        self._guardar()
+        self._diario("material", f"Foto de perfil y {len(hechas) - 1} portadas hechas (YouTube, X, Facebook, Twitch, "
+                                 "Pinterest)", ruta=str(NX / "portadas/youtube_2560x1440.jpg"))
+        def mandar():                                   # a Telegram sin hacer esperar la respuesta
+            for h in hechas:
+                try:
+                    self.enviar_foto(str(NX / h["archivo"]), f"{h['tipo']} {h['red']} ({h['medida']})")
+                except Exception as ex:
+                    self.log(f"nexus: portada a Telegram: {ex}")
+        threading.Thread(target=mandar, daemon=True, name="nexus-portadas").start()
+        return (f"Hechas la foto de perfil y las portadas de {len(hechas) - 1} redes con sus fotos. Están en la página "
+                "de Asuka, con un botón para descargar cada una y dónde se cambia en cada red.")
+
     def apuntar_cuenta(self, red: str, usuario: str) -> dict:
         """Desde la página: la persona ha creado la cuenta y escribe el usuario que le ha quedado."""
         red = "x" if red == "twitter" else red
-        u = re.sub(r"[^a-z0-9_.]", "", usuario.strip().lstrip("@").lower())[:30]
+        u = usuario.strip().rstrip("/").split("?")[0]
+        if "/" in u:                                    # han pegado la dirección entera: lo último es el usuario
+            u = u.rsplit("/", 1)[-1]
+        u = re.sub(r"[^a-z0-9_.]", "", u.lstrip("@").lower())[:30]
         if red not in REDES or not u:
             return {"ok": False, "error": "red o usuario no válidos"}
         self.e["cuentas"][red] = {"estado": "creada", "usuario": u, "fecha": time.strftime("%Y-%m-%d")}
@@ -525,11 +562,14 @@ class Nexus:
                      "INGLÉS para generar imágenes coherentes: edad aparente adulta, pelo, ojos, piel, ropa típica, estilo; "
                      "sin desnudez), \"personalidad\" (3 rasgos), \"tono\" (cómo habla, con 3 muletillas suyas), "
                      "\"pilares\" (4 temas de contenido con ejemplo cada uno), \"nunca\" (5 cosas que nunca hace: incluye "
-                     "no fingir ser humana, no contenido sexual, no política), \"publico\" (a quién se dirige), "
-                     "\"aviso_ia\" (frase corta en español para declarar que es IA, en su tono).", max_tokens=1800)
+                     f"no mentir sobre lo que es si se lo preguntan, no contenido sexual explícito, no política), \"publico\" (a quién se "
+                     f"dirige), \"aviso_ia\" (marca muy corta para la bio, 2-4 palabras, p. ej. «✦ creadora digital IA»), "
+                     f"\"reglas_conversacion\" (cómo contesta comentarios y mensajes; regla obligatoria: {TRANSPARENCIA})",
+                     max_tokens=1800)
         self.e["id"]["biblia"] = d
         self.e["id"]["apariencia_en"] = d.get("apariencia_en", "")
-        self.e["id"]["aviso_ia"] = d.get("aviso_ia", "Personaje creado con IA")
+        self.e["id"]["aviso_ia"] = d.get("aviso_ia", "✦ creadora digital IA")
+        d.setdefault("reglas_conversacion", TRANSPARENCIA)
         self._guardar()
         return d
 
@@ -616,8 +656,9 @@ class Nexus:
                      f"Escribe la biografía de {self.e['id']['nombre']} (@{self.e['id']['usuario']}) para cada red, en "
                      f"español de España, en su tono ({b.get('tono', '')}). Personaje: {b.get('resumen', BASE)}. "
                      + (f"Cambios pedidos por el usuario: {b.get('notas_bios')}. " if b.get("notas_bios") else "")
-                     + "OBLIGATORIO: cada bio dice claramente que es un personaje creado con IA (por ejemplo «IA» o "
-                     "«creada con IA») y respeta el máximo de caracteres: "
+                     + "Que no gire en torno a la IA: solo una marca corta y discreta al final de cada bio (por "
+                     f"ejemplo «{self.e['id'].get('aviso_ia', '✦ creadora digital IA')}»), lo mínimo que piden las redes. "
+                     "Respeta el máximo de caracteres: "
                      + ", ".join(f"{k} {v['bio']}" for k, v in REDES.items())
                      + ". Para youtube, una descripción de canal de 3-4 frases. Añade \"email_firma\" (firma de correo "
                      "profesional para marcas, 3 líneas). JSON: {\"tiktok\": \"…\", \"instagram\": \"…\", \"youtube\": "
@@ -629,7 +670,7 @@ class Nexus:
         self.e["id"]["bios"] = d
         self._guardar()
         ej = d.get("instagram", "")
-        return self._preguntar("bios", f"Bios listas para las 6 redes y la firma de correo, todas con el aviso de IA. "
+        return self._preguntar("bios", f"Bios listas para las {len(REDES)} redes y la firma de correo, con la marca de IA mínima al final. "
                                        f"La de Instagram dice: «{ej}». Las tienes en el panel para copiarlas. ¿Te valen, "
                                        "o qué cambio?")
 
@@ -777,8 +818,9 @@ class Nexus:
                          "INGLÉS, con el personaje en un lugar concreto"
                          + (f", eligiendo entre estos lugares de los que hay fotos suyas: {lugares}" if lugares else "")
                          + "). Termina con una llamada a seguir. Además "
-                         "\"titulo\", \"caption\" (español, con el aviso de IA al final), \"hashtags\" (8, incluye #IA "
-                         "y #AIinfluencer), \"titulo_youtube\" (máx 90 car.). JSON: {\"titulo\": …, \"escenas\": [{\"texto\": "
+                         "\"titulo\", \"caption\" (español, sin hablar de IA), \"hashtags\" (8, del tema del vídeo), "
+                         f"\"titulo_youtube\" (máx 90 car.). Regla del personaje: {TRANSPARENCIA} "
+                         "JSON: {\"titulo\": …, \"escenas\": [{\"texto\": "
                          "…, \"visual_en\": …}], \"caption\": …, \"hashtags\": […], \"titulo_youtube\": …}", max_tokens=2000)
             carpeta = NX / "videos" / time.strftime("%Y%m%d-%H%M%S")
             reserva = (lambda tx, ruta: voz_piper(self.voz.voz, tx, ruta)) if self.voz is not None else None
@@ -795,7 +837,12 @@ class Nexus:
             self.e["pregunta"] = {"clave": "video_ok", "t": time.time(), "video": len(self.e["videos"]) - 1,
                                   "texto": "¿Te gusta el vídeo? Si me dices que sí, queda listo para publicar."}
             self._guardar()
-            self.enviar_documento(str(ruta), f"{v['titulo']}\n\n{g.get('caption', '')}\n{' '.join(g.get('hashtags', []))}")
+            g["etiqueta_ia_red"] = True      # al publicar: casilla oficial «generado con IA» de cada red
+            (carpeta / "publicacion.json").write_text(json.dumps(g, ensure_ascii=False, indent=1), encoding="utf-8")
+            self.enviar_documento(str(ruta), f"{v['titulo']}\n\n{g.get('caption', '')}\n{' '.join(g.get('hashtags', []))}"
+                                             "\n\nAl subirlo, activa la casilla de la red «contenido generado con IA» "
+                                             "(TikTok: Más opciones → Contenido generado por IA; YouTube: contenido "
+                                             "alterado o sintético → Sí; Instagram: Etiqueta de IA).")
             return (f"Vídeo terminado: «{v['titulo']}». Lo tienes en el panel de Nexus y en Telegram con su texto y "
                     "etiquetas. ¿Te gusta? Si me dices que sí, queda listo para publicar.")
         self._en_hilo("vídeo", trabajo)
@@ -858,6 +905,9 @@ class Nexus:
         e["enlaces"] = {k: {"alta": v["alta"], "perfil": v["perfil"]} for k, v in REDES.items()}
         e["retratos"] = sorted(p.name for p in (NX / "retratos").glob("*.jpg")) if (NX / "retratos").exists() else []
         e["perfil"] = (NX / "perfil.jpg").exists()
+        e["portadas"] = self.e.get("portadas", [])
+        pp = NX / "portadas" / "perfil_1080.jpg"
+        e["portadas_v"] = str(int(pp.stat().st_mtime)) if pp.exists() else ""
         e["referencias"] = self._indice(REF)
         e["clips"] = self._indice(CLIPS)
         e["mezcla"] = self.e.get("mezcla") or MEZCLA

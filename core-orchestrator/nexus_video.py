@@ -5,7 +5,7 @@ Vídeos cortos verticales (1080×1920) para el proyecto Nexus, a coste 0 y en es
                          del personaje diseñada una vez y reutilizada siempre); si falla, Kokoro «ef_dora»; si no, Piper
                      →  por escena, lo que mejor encaje: un clip del personaje (DeeVid, OpenGen, Viggle, Wan…), una de
                          sus fotos de referencia, o una imagen nueva con FLUX
-                     →  movimiento suave (zoom), subtítulos grandes palabra a palabra y la etiqueta «IA»
+                     →  movimiento suave (zoom), subtítulos grandes palabra a palabra
                      →  MP4 listo para TikTok, Reels y Shorts.
 """
 
@@ -143,7 +143,8 @@ def subtitulos(escenas: list[dict], destino: Path, etiqueta: str) -> None:
             limpio = tr.replace("{", "(").replace("}", ")").upper()
             lineas.append(f"Dialogue: 0,{_ass_tiempo(t)},{_ass_tiempo(t + d)},Sub,,0,0,0,,{limpio}")
             t += d
-    lineas.append(f"Dialogue: 1,{_ass_tiempo(0)},{_ass_tiempo(t + 1)},Eti,,0,0,0,,{etiqueta}")
+    if etiqueta:
+        lineas.append(f"Dialogue: 1,{_ass_tiempo(0)},{_ass_tiempo(t + 1)},Eti,,0,0,0,,{etiqueta}")
     destino.write_text(cab + "\n".join(lineas) + "\n", encoding="utf-8")
 
 
@@ -158,10 +159,15 @@ def montar(escenas: list[dict], carpeta: Path, salida: Path, etiqueta: str, log:
         frames = int(e["dur"] * 30)
         zoom = "min(zoom+0.0009,1.12)" if i % 2 == 0 else "if(eq(on,0),1.12,max(zoom-0.0009,1.0))"
         if e.get("clip"):
+            if e.get("marca"):      # la marca de agua del servicio gratis se respeta: clip entero sobre fondo difuminado
+                vf = (f"[0:v]split[a][b];[a]scale={ANCHO}:{ALTO}:force_original_aspect_ratio=increase,crop={ANCHO}:{ALTO},"
+                      f"boxblur=30:3[f];[b]scale={ANCHO}:-2[c];[f][c]overlay=0:(H-h)/2,fps=30,format=yuv420p[v];"
+                      "[1:a]apad,aresample=44100[a]")
+            else:
+                vf = (f"[0:v]scale={ANCHO}:{ALTO}:force_original_aspect_ratio=increase,crop={ANCHO}:{ALTO},"
+                      "fps=30,format=yuv420p[v];[1:a]apad,aresample=44100[a]")
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-stream_loop", "-1", "-i", str(e["clip"]),
-                            "-i", str(e["audio"]), "-filter_complex",
-                            f"[0:v]scale={ANCHO}:{ALTO}:force_original_aspect_ratio=increase,crop={ANCHO}:{ALTO},"
-                            "fps=30,format=yuv420p[v];[1:a]apad,aresample=44100[a]",
+                            "-i", str(e["audio"]), "-filter_complex", vf,
                             "-map", "[v]", "-map", "[a]", "-t", f"{e['dur']:.2f}", "-c:v", "libx264", "-preset",
                             "veryfast", "-crf", "21", "-c:a", "aac", "-b:a", "160k", str(clip)], check=True)
             partes.append(clip)
@@ -222,7 +228,8 @@ def crear_corto(guion: dict, identidad: dict, carpeta: Path, imagen: Callable[[s
         audio = carpeta / f"voz{i}.wav"
         propio = fuente(e.get("visual_en", ""), i) if fuente else None
         if propio and propio[0] == "clip":
-            escenas.append({"clip": propio[1], "audio": audio, "texto": e["texto"]})
+            escenas.append({"clip": propio[1], "audio": audio, "texto": e["texto"],
+                            "marca": len(propio) > 2 and propio[2]})
             continue
         if propio:
             from PIL import Image, ImageOps
@@ -238,7 +245,8 @@ def crear_corto(guion: dict, identidad: dict, carpeta: Path, imagen: Callable[[s
         escenas.append({"imagen": img, "audio": audio, "texto": e["texto"]})
     nombre = re.sub(r"[^a-z0-9]+", "-", guion.get("titulo", "video").lower()).strip("-")[:40] or "video"
     salida = carpeta / f"{nombre}.mp4"
-    return montar(escenas, carpeta, salida, identidad.get("etiqueta_video", "Personaje creado con IA"), log)
+    # sin rótulo «IA» quemado en la imagen: la transparencia va en la etiqueta oficial de cada red al publicar
+    return montar(escenas, carpeta, salida, identidad.get("etiqueta_video", ""), log)
 
 
 def hay_ffmpeg() -> bool:

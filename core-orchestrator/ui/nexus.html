@@ -45,6 +45,10 @@
   dl { margin:0; } dt { color:var(--cian); margin-top:8px; } dd { margin:2px 0 0 0; color:var(--tinta); }
   .ocupado { color:var(--oro); }
   section.ancha { grid-column:1 / -1; }
+  .portadas { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:14px; }
+  .portadas figure { margin:0; } .portadas img { width:100%; border:1px solid var(--linea); display:block; }
+  .portadas figcaption { font-size:14px; color:var(--tenue); margin-top:4px; }
+  .portadas figcaption b { color:var(--tinta); } .portadas a.boton { display:inline-block; margin:4px 0; }
   td a { color:var(--tinta); text-decoration:none; border-bottom:1px dotted var(--cian); }
   td a:hover { color:var(--cian); }
   a.boton { color:var(--cian); border:1px solid var(--cian); padding:3px 10px; font:600 13px Rajdhani; text-decoration:none; }
@@ -91,6 +95,10 @@
   <section><h2>Biografías por red</h2><div id="bios" class="vacio">Aún no están hechas.</div></section>
   <section><h2>Cuentas</h2><table id="cuentas"></table><p class="vacio" style="font-size:14px">Pincha en una cuenta para
     abrirla. Las que faltan las creas tú con «Crear» (tu móvil y tu contraseña) y luego pulsas «Ya la tengo».</p></section>
+  <section class="ancha"><h2>Foto de perfil y portadas</h2>
+    <p class="vacio" style="font-size:14px;margin-top:0">Descarga cada una y súbela en su red (las redes no dejan cambiarla
+      desde fuera hasta que esté la conexión oficial). Para rehacerlas: «nexus, haz las portadas».</p>
+    <div class="portadas" id="portadas"></div></section>
   <section class="ancha"><h2>Correo de Asuka</h2>
     <div class="barra"><span id="correo-estado" class="vacio">Cargando…</span>
       <a class="boton" href="https://mail.google.com/" target="_blank" rel="noopener">Abrir Gmail</a>
@@ -187,6 +195,19 @@ function pintar(d) {
     f.appendChild(i); f.appendChild(el("figcaption", r.replace(".jpg", "").replace("candidata", "Candidata "))); rj.appendChild(f);
   });
   if (!rj.childNodes.length) rj.appendChild(el("p", "Aún no hay retratos.", "vacio"));
+  // portadas
+  const po = $("portadas"); po.textContent = "";
+  (d.portadas || []).forEach((p) => {
+    const f = el("figure"); const i = el("img"); i.loading = "lazy"; i.src = archivo(p.archivo) + "?v=" + encodeURIComponent(d.portadas_v || "");
+    f.appendChild(i);
+    const c = el("figcaption"); c.appendChild(el("b", p.tipo + " · " + (p.red === "todas" ? "todas las redes" : ((d.redes || {})[p.red] || p.red)) + " · " + p.medida));
+    const a = el("a", "Descargar"); a.className = "boton"; a.href = archivo(p.archivo); a.download = p.archivo.split("/").pop();
+    c.appendChild(el("br")); c.appendChild(a);
+    const donde = typeof p.donde === "string" ? { [p.red]: p.donde } : (p.donde || {});
+    for (const [red, txt] of Object.entries(donde)) c.appendChild(el("div", ((d.redes || {})[red] || red) + ": " + txt));
+    f.appendChild(c); po.appendChild(f);
+  });
+  if (!po.childNodes.length) po.appendChild(el("p", "Aún no están hechas. Dile a Athena «nexus, haz las portadas».", "vacio"));
   // material propio
   const rf = $("refs"); rf.textContent = "";
   (d.referencias || []).forEach((r) => {
