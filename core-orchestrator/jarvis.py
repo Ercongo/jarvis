@@ -38,6 +38,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -191,6 +192,7 @@ def es_orden_fija(texto: str) -> bool:
             or re.search(r"\b(github|repositorio)\b|\b(ponlo|ponla|pon) en practica\b|\blo que (sabes|has aprendido)\b"
                          r"|\byoutube\b.*\b(resum\w*|aprend\w*|explica\w*)\b|\b(resum\w*|aprend\w*)\b.*\byoutube\b"
                          r"|\bresume\w* (el|los|este) videos?\b|\b(aprend\w*|investiga\w*) (tu solo|por tu cuenta|sola)\b", t) \
+            or re.search(r"\bnexus\b", t) \
             or re.search(r"\b(radio|emisora|podcast|pódcast|episodio)\b|^(pon|ponme|sintoniza)\w* (la )?(cadena ser|los ?40|"
                          r"la cope|cope|onda cero|rne|cadena dial|cadena 100|europa fm|kiss fm|rock fm|esradio)$|\bcopias? de seguridad\b|\b(ultima|cuantas) copias?\b"
                          r"|\b(velocidad|test)\b.*\b(internet|conexion|wifi|fibra)\b|\bcomo (va|anda) (el |la )?(internet|wifi|fibra)\b", t) \
@@ -297,6 +299,7 @@ class Interfaz:
         self.saber_ev: dict | None = None
         self.casa_ev: dict | None = None                # aparatos de Alexa y avisos de los Echo (para la pantalla)
         self.casa = None                                # POST /casa: lo conecta Jarvis (encender/apagar al tocar)
+        self.nexus = None                               # /nexus: el panel del proyecto de redes sociales
         self.google = None                              # la cuenta de Google (para /google/conectar y /google)
         self.calendario = None                          # lo conecta Jarvis: la página /calendario lo usa
         self.asistente = None                           # el asistente de configuración (/asistente)
@@ -375,6 +378,20 @@ class Interfaz:
                         self.send_error(404)
                 elif self.path == "/calendario":
                     self._enviar(200, (UI_DIR / "calendario.html").read_bytes(), "text/html; charset=utf-8")
+                elif self.path == "/nexus" and ui.nexus:
+                    self._enviar(200, (UI_DIR / "nexus.html").read_bytes(), "text/html; charset=utf-8")
+                elif self.path.startswith("/nexus/datos") and ui.nexus:
+                    self._enviar(200, json.dumps(ui.nexus.datos_panel(), ensure_ascii=False).encode(), "application/json")
+                elif self.path.startswith("/nexus/archivo/") and ui.nexus:
+                    # solo archivos dentro de ~/jarvis/nexus (retratos, vídeos, voz)
+                    from nexus import NX
+                    rel = urllib.parse.unquote(self.path[len("/nexus/archivo/"):].split("?")[0])
+                    f = (NX / rel).resolve()
+                    if NX.resolve() in f.parents and f.is_file() and f.suffix.lower() in (".jpg", ".png", ".mp4", ".wav"):
+                        tipo = {".jpg": "image/jpeg", ".png": "image/png", ".mp4": "video/mp4", ".wav": "audio/wav"}[f.suffix.lower()]
+                        self._enviar(200, f.read_bytes(), tipo)
+                    else:
+                        self.send_error(404)
                 elif self.path.startswith("/calendario.json"):
                     datos = ui.calendario.datos_web() if ui.calendario else {"eventos": []}
                     self._enviar(200, json.dumps(datos, ensure_ascii=False).encode(), "application/json")
@@ -1016,6 +1033,12 @@ class Jarvis:
         self.radio = Radio(log, alexa=self.alexa)       # emisoras (Radio Browser) y pódcast
         from copias import Copias
         self.copias = Copias(log, decir=self.decir)     # copias de seguridad cifradas (restic)
+        from nexus import Nexus                         # proyecto de redes: personaje IA, contenido y publicación
+        self.nexus = Nexus(self.cerebro, self.decir, log, ui=self.ui, estudio=self.estudio, voz=self.voz,
+                           avisar=self.tg.enviar, enviar_foto=self.tg.enviar_foto,
+                           enviar_documento=self.tg.enviar_documento,
+                           es_telegram=lambda: getattr(self._canal, "tg", False))
+        self.ui.nexus = self.nexus
         from visual import Visual                       # diagramas (Archify) y vídeos animados (HyperFrames)
         self.visual = Visual(self.cerebro, self.decir, log, avisar=self.tg.enviar,
                              enviar_documento=self.tg.enviar_documento,
@@ -1440,6 +1463,14 @@ class Jarvis:
             log(f"plan: respuesta «{entrada}»")
             return {"texto": pr.responder(entrada), "susurro": None, "despues": None, "archivo": None,
                     "origen": "practica"}
+        nx = getattr(self, "nexus", None)              # ¿contesta a una pregunta del proyecto Nexus?
+        if profundidad == 0 and nx is not None and nx.espera_respuesta() and not es_orden_fija(entrada) \
+                and nx.parece_respuesta(entrada):
+            try:
+                r = nx.responder(entrada)
+                return {"texto": r.texto, "susurro": None, "despues": None, "archivo": None, "origen": "nexus"}
+            except Exception as e:
+                log(f"error en nexus: {e!r}")
         if profundidad < 2:
             try:
                 reescrito = self.aprende.reescribir(entrada, self._ultima_entrada)
@@ -1689,7 +1720,7 @@ class Jarvis:
 
     def _procesar_una(self, entrada: str, profundidad: int) -> dict:
         t0 = time.time()
-        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.alexa, "alexa"), (self.radio, "radio"), (self.copias, "copias"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.visual, "visual"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
+        for modulo, nombre in ((self.aprende, "aprendizaje"), (self.molestar, "molestar"), (self.alexa, "alexa"), (self.radio, "radio"), (self.copias, "copias"), (self.nexus, "nexus"), (self.ultimos, "ultimos"), (self.instalar, "instalar"), (self.medios, "medios"), (self.movil, "movil"), (self.asistente, "asistente"), (self.omni, "omniroute"), (self.actualizador, "actualizar"), (self.audio, "audio"), (self.apis, "apis"), (self.servicios, "servicios_ia"), (self.visual, "visual"), (self.nex, "nex"), (self.saber, "saber"), (self.estudio, "estudio"), (self.oficina, "oficina"),
                                (self.creativo, "creativo"), (self.vision, "vision"),
                                (self.correo, "correo"),
                                (self.cal, "calendario"),

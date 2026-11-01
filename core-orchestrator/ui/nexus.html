@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexus · proyecto de redes</title>
+<style>
+  @font-face { font-family: "Orbitron"; font-weight: 700; src: url(/fuentes/orbitron-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Rajdhani"; font-weight: 500; src: url(/fuentes/rajdhani-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Rajdhani"; font-weight: 600; src: url(/fuentes/rajdhani-latin-600-normal.woff2) format("woff2"); }
+  :root { --fondo:#04070d; --panel:#0a1220; --linea:#1b2a44; --tinta:#dcecf5; --tenue:#7d93ad; --rojo:#ff3b5c;
+          --cian:#38e8ff; --oro:#ffc04a; --ok:#5dffb0; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--fondo); color:var(--tinta); font:500 16px/1.5 Rajdhani, Ubuntu, sans-serif; }
+  header { padding:22px 28px 14px; border-bottom:1px solid var(--linea); display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+  header img { width:84px; height:84px; border-radius:50%; object-fit:cover; border:2px solid var(--rojo); }
+  h1 { font:700 26px Orbitron, sans-serif; letter-spacing:.18em; margin:0; color:#fff; }
+  .usu { color:var(--cian); font-size:17px; }
+  .aviso { display:inline-block; margin-top:4px; padding:2px 10px; border:1px solid var(--oro); color:var(--oro); font-size:13px; }
+  main { padding:20px 28px 60px; display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:18px; }
+  section { background:var(--panel); border:1px solid var(--linea); padding:16px 18px; }
+  h2 { font:700 12px Orbitron, sans-serif; letter-spacing:.25em; color:var(--cian); margin:0 0 12px; text-transform:uppercase; }
+  .pasos { list-style:none; margin:0; padding:0; }
+  .pasos li { padding:6px 0; border-bottom:1px solid var(--linea); display:flex; gap:10px; align-items:center; }
+  .pasos li::before { content:"○"; color:var(--tenue); width:16px; }
+  .pasos li.ok::before { content:"✔"; color:var(--ok); }
+  .pasos li.ahora { color:#fff; font-weight:600; }
+  .pasos li.ahora::before { content:"▶"; color:var(--rojo); }
+  .pregunta { margin-top:12px; padding:10px 12px; border-left:3px solid var(--rojo); background:rgba(255,59,92,.07); }
+  .bio { margin-bottom:12px; }
+  .bio b { color:var(--cian); font-weight:600; letter-spacing:.05em; }
+  .bio small { color:var(--tenue); margin-left:6px; }
+  .bio p { margin:4px 0; white-space:pre-wrap; background:#060c16; padding:8px 10px; border:1px solid var(--linea); }
+  button { background:transparent; color:var(--cian); border:1px solid var(--cian); padding:3px 10px; font:600 13px Rajdhani; cursor:pointer; }
+  button:hover { background:rgba(56,232,255,.12); }
+  .rejilla { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
+  .rejilla img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid var(--linea); }
+  .rejilla figure { margin:0; text-align:center; color:var(--tenue); font-size:13px; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:6px 4px; border-bottom:1px solid var(--linea); }
+  .estado { color:var(--tenue); } .estado.creada { color:var(--ok); }
+  video { width:100%; max-height:520px; background:#000; }
+  .video { margin-bottom:16px; }
+  .vacio { color:var(--tenue); }
+  dl { margin:0; } dt { color:var(--cian); margin-top:8px; } dd { margin:2px 0 0 0; color:var(--tinta); }
+  .ocupado { color:var(--oro); }
+</style>
+</head>
+<body>
+<header>
+  <img id="foto" alt="" hidden>
+  <div>
+    <h1 id="nombre">NEXUS</h1>
+    <div class="usu" id="usuario">Personaje sin nombre todavía</div>
+    <div class="aviso" id="aviso" hidden></div>
+  </div>
+</header>
+<main>
+  <section><h2>Progreso</h2><ul class="pasos" id="pasos"></ul><div id="pregunta"></div></section>
+  <section><h2>Biografías por red</h2><div id="bios" class="vacio">Aún no están hechas.</div></section>
+  <section><h2>Cuentas</h2><table id="cuentas"></table><p class="vacio" style="font-size:14px">Las crea usted (con su móvil y
+    contraseña); el asistente le guía y apunta el usuario.</p></section>
+  <section><h2>Retratos</h2><div class="rejilla" id="retratos"></div></section>
+  <section><h2>Vídeos</h2><div id="videos" class="vacio">Todavía no hay vídeos.</div></section>
+  <section><h2>Biblia del personaje</h2><dl id="biblia" class="vacio">Aún no está hecha.</dl></section>
+  <section><h2>Plan semanal</h2><div id="calendario" class="vacio">Se hace en el último paso.</div></section>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const el = (tag, txt, cls) => { const e = document.createElement(tag); if (txt != null) e.textContent = txt; if (cls) e.className = cls; return e; };
+const archivo = (r) => "/nexus/archivo/" + encodeURIComponent(r).replace(/%2F/g, "/");
+const rel = (ruta) => { const i = ruta.indexOf("/nexus/"); return i >= 0 ? ruta.slice(i + 7) : ruta; };
+function copiar(txt, b) {
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(
+    () => { b.textContent = "Copiado"; setTimeout(() => b.textContent = "Copiar", 1500); },
+    () => { const t = el("textarea"); t.value = txt; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); b.textContent = "Copiado"; });
+}
+function pintar(d) {
+  const id = d.id || {};
+  $("nombre").textContent = id.nombre || "NEXUS";
+  $("usuario").textContent = id.usuario ? "@" + id.usuario + (id.correo ? " · " + id.correo : "") : "Personaje sin nombre todavía";
+  if (id.aviso_ia) { $("aviso").hidden = false; $("aviso").textContent = id.aviso_ia; }
+  if (d.perfil) { $("foto").hidden = false; $("foto").src = archivo("perfil.jpg") + "?t=" + Date.now(); }
+  // progreso
+  const ul = $("pasos"); ul.textContent = "";
+  for (const p of d.orden) {
+    const li = el("li", d.titulos[p]);
+    if (d.hechos.includes(p)) li.className = "ok"; else if (p === d.paso) li.className = "ahora";
+    ul.appendChild(li);
+  }
+  const pq = $("pregunta"); pq.textContent = "";
+  if (d.ocupado) pq.appendChild(el("div", "Trabajando: " + d.ocupado + "…", "pregunta ocupado"));
+  else if (d.pregunta) pq.appendChild(el("div", "Esperando su respuesta (dígasela al asistente o por Telegram).", "pregunta"));
+  // bios
+  if (id.bios) {
+    const c = $("bios"); c.textContent = ""; c.className = "";
+    const nombres = Object.assign({}, d.redes, { email_firma: "Firma de correo" });
+    for (const [k, v] of Object.entries(id.bios)) {
+      const caja = el("div", null, "bio");
+      const t = el("b", nombres[k] || k); caja.appendChild(t); caja.appendChild(el("small", v.length + " caracteres"));
+      caja.appendChild(el("p", v));
+      const b = el("button", "Copiar"); b.onclick = () => copiar(v, b); caja.appendChild(b);
+      c.appendChild(caja);
+    }
+  }
+  // cuentas
+  const tb = $("cuentas"); tb.textContent = "";
+  for (const [k, n] of Object.entries(d.redes)) {
+    const cu = (d.cuentas || {})[k] || {};
+    const tr = el("tr");
+    tr.appendChild(el("td", n));
+    tr.appendChild(el("td", cu.usuario ? "@" + cu.usuario : "—"));
+    tr.appendChild(el("td", cu.estado || "por crear", "estado " + (cu.estado || "")));
+    tb.appendChild(tr);
+  }
+  // retratos
+  const rj = $("retratos"); rj.textContent = "";
+  (d.retratos || []).forEach((r) => {
+    const f = el("figure"); const i = el("img"); i.src = archivo("retratos/" + r) + "?t=" + Date.now(); i.alt = r;
+    f.appendChild(i); f.appendChild(el("figcaption", r.replace(".jpg", "").replace("candidata", "Candidata "))); rj.appendChild(f);
+  });
+  if (!rj.childNodes.length) rj.appendChild(el("p", "Aún no hay retratos.", "vacio"));
+  // vídeos
+  const vs = d.videos || [];
+  if (vs.length) {
+    const c = $("videos"); c.textContent = ""; c.className = "";
+    for (const v of vs.slice().reverse()) {
+      const caja = el("div", null, "video");
+      caja.appendChild(el("b", v.titulo + (v.aprobado ? "  ✔ aprobado" : "")));
+      const vid = el("video"); vid.controls = true; vid.preload = "none"; vid.src = archivo(rel(v.ruta)); caja.appendChild(vid);
+      caja.appendChild(el("div", v.fecha, "vacio"));
+      c.appendChild(caja);
+    }
+  }
+  // biblia
+  const b = id.biblia;
+  if (b) {
+    const dl = $("biblia"); dl.textContent = ""; dl.className = "";
+    for (const [k, v] of Object.entries(b)) {
+      if (k === "apariencia_en") continue;
+      dl.appendChild(el("dt", k.replace("_", " ")));
+      dl.appendChild(el("dd", typeof v === "string" ? v : Array.isArray(v) ? v.map(x => typeof x === "string" ? x : Object.values(x).join(": ")).join(" · ") : JSON.stringify(v)));
+    }
+  }
+  // calendario
+  if (id.calendario && id.calendario.length) {
+    const c = $("calendario"); c.textContent = ""; c.className = "";
+    for (const dia of id.calendario) {
+      c.appendChild(el("dt", dia.dia));
+      c.appendChild(el("dd", (dia.tareas || []).join(" · ")));
+    }
+  }
+}
+async function cargar() {
+  try { pintar(await (await fetch("/nexus/datos?t=" + Date.now())).json()); } catch (e) { /* el asistente se está reiniciando */ }
+}
+cargar(); setInterval(cargar, 10000);
+</script>
+</body>
+</html>
