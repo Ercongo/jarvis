@@ -1045,6 +1045,8 @@ class Jarvis:
                            es_telegram=lambda: getattr(self._canal, "tg", False))
         self.ui.nexus = self.nexus
         threading.Timer(90, self.nexus.recordar).start()   # una pregunta de Nexus sin contestar se repite al arrancar
+        from herramientas import abrir_web as _abrir
+        threading.Timer(45, lambda: _abrir("http://127.0.0.1:8765/nexus")).start()   # la página de Asuka, al arrancar
         from visual import Visual                       # diagramas (Archify) y vídeos animados (HyperFrames)
         self.visual = Visual(self.cerebro, self.decir, log, avisar=self.tg.enviar,
                              enviar_documento=self.tg.enviar_documento,
@@ -1250,11 +1252,17 @@ class Jarvis:
             return {"texto": "Guardada la clave de Pollinations: las imágenes saldrán sin marca de agua y más deprisa. "
                              "Borra ese mensaje del chat, por seguridad.", "susurro": None, "despues": None,
                     "archivo": None}
-        m = re.search(r"(?i)\b(?:clave|key|token|api)\s+(?:de\s+)?(musicful|fal(?:\.ai)?|runway|hugging\s*face|hf)\b"
+        m = re.search(r"(?i)\b(?:voz|voice)\s+(?:de\s+)?eleven\s*labs\W*([A-Za-z0-9]{18,24})\b", texto)
+        if m:                                           # qué voz de ElevenLabs usa el personaje de Nexus
+            guardar_clave_estudio("elevenlabs_voz", m.group(1))
+            return {"texto": "Apuntada la voz de ElevenLabs para el personaje de Nexus.", "susurro": None,
+                    "despues": None, "archivo": None}
+        m = re.search(r"(?i)\b(?:clave|key|token|api)\s+(?:de\s+)?(musicful|fal(?:\.ai)?|runway|hugging\s*face|hf|eleven\s*labs)\b"
                       r"\W*([A-Za-z0-9_\-:.]{16,})", texto) or re.search(r"\b()(hf_[A-Za-z0-9]{30,})\b", texto)
         if m:                                           # claves del estudio: ni al registro ni a la IA
             servicio = normalizar(m.group(1) or "hf").replace(" ", "").replace(".ai", "")
             servicio = "hf" if servicio in ("huggingface", "hf") else servicio
+            servicio = "elevenlabs" if servicio.startswith("eleven") else servicio
             guardar_clave_estudio(servicio, m.group(2))
             log(f"telegram: recibida una clave de {servicio} (no se guarda en el registro)")
             return {"texto": comprobar_clave(servicio, m.group(2)) + " Borra tu mensaje con la clave, por seguridad.",

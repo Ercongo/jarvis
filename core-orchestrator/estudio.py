@@ -590,6 +590,11 @@ def comprobar_clave(servicio: str, clave: str) -> str:
             r = _http("https://api.dev.runwayml.com/v1/organization", timeout=20,
                       cabeceras={"Authorization": f"Bearer {clave}", "X-Runway-Version": "2024-11-06"})
             return f"Runway acepta la clave; saldo: {r.get('creditBalance', '?')} créditos."
+        if servicio == "elevenlabs":
+            r = _http("https://api.elevenlabs.io/v1/user/subscription", cabeceras={"xi-api-key": clave}, timeout=20)
+            return (f"ElevenLabs acepta la clave (plan {r.get('tier', '?')}, {r.get('character_count', 0)} de "
+                    f"{r.get('character_limit', '?')} caracteres usados este mes). Ahora dime «voz de elevenlabs» y "
+                    "el identificador de la voz.")
         if servicio == "hf":
             r = _http("https://huggingface.co/api/whoami-v2", cabeceras={"Authorization": f"Bearer {clave}"}, timeout=20)
             return f"Hugging Face acepta el token de {r.get('name', 'tu cuenta')}: tendrás más cupo gratis."

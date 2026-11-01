@@ -11,7 +11,10 @@ Pinterest y correo, llevado por el asistente paso a paso y preguntando lo que ne
 Material propio del personaje (lo usa antes que generar nada):
   ~/jarvis/nexus/referencias/  fotos del personaje + indice.json (escena y si es «publica», «revisar» o «no»)
   ~/jarvis/nexus/clips/        clips hechos en DeeVid, OpenGen, Viggle… + indice.json
-Solo lo marcado «publica» entra solo en los vídeos; «revisar» únicamente si lo aprueba la persona; «no», nunca.
+En los vídeos, cada escena sale de una categoría al azar según la mezcla elegida por la persona (por defecto 60 %
+verdes «publica», 35 % ámbar «revisar», 5 % rojas «no»): «nexus: mezcla 60 35 5». La foto de perfil, solo verdes.
+Diario: todo lo que pasa con el personaje (preguntas, respuestas, vídeos, material, publicaciones y comentarios)
+se apunta en ~/jarvis/nexus/diario.jsonl y se ve en el panel, que se abre solo al arrancar.
 
 Lo que hace el asistente: nombre, biblia del personaje, retratos (FLUX), biografías por red con el aviso de IA,
 guiones, voz, vídeos verticales y el calendario. Lo que hace la persona (las redes lo exigen): crear cuentas,
@@ -46,6 +49,7 @@ VOZ_DESC = ["Young adult woman from Spain, about 24, warm slightly husky mid-low
             "witty delivery, Castilian Spanish accent, sounds like a popular tech and gaming creator",
             "Young adult woman from Spain, low smooth calm voice, deadpan and ironic, slightly raspy, confident, "
             "Castilian Spanish accent, unhurried like a late-night streamer"]
+MEZCLA = {"publica": 60, "revisar": 35, "no": 5}
 VOZ_TEXTO = "Hola, soy {n}. Soy un personaje creado con inteligencia artificial, y no, no vengo a caerte bien."
 REDES = {
     "tiktok": {"nombre": "TikTok", "alta": "https://www.tiktok.com/signup", "bio": 80},
@@ -132,6 +136,28 @@ class Nexus:
         except (OSError, ValueError):
             return {"paso": "nombre", "hechos": [], "id": {}, "cuentas": {}, "videos": [], "pregunta": None}
 
+    def _diario(self, tipo: str, texto: str, **extra) -> None:
+        """Todo lo que pasa con el personaje, en orden: se ve en la página de Nexus."""
+        try:
+            with open(NX / "diario.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps({"t": time.strftime("%Y-%m-%d %H:%M:%S"), "tipo": tipo, "texto": texto[:2000],
+                                    **extra}, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+    def _leer_diario(self, n: int = 400) -> list[dict]:
+        try:
+            lineas = (NX / "diario.jsonl").read_text(encoding="utf-8").splitlines()[-n:]
+        except OSError:
+            return []
+        out = []
+        for l in lineas:
+            try:
+                out.append(json.loads(l))
+            except ValueError:
+                pass
+        return out
+
     def _guardar(self) -> None:
         tmp = ESTADO.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.e, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -143,6 +169,7 @@ class Nexus:
     def _preguntar(self, clave: str, texto: str, **datos) -> Respuesta:
         self.e["pregunta"] = {"clave": clave, "t": time.time(), "texto": texto, **datos}
         self._guardar()
+        self._diario("athena", texto)
         if not self.es_telegram():                      # que llegue también al móvil, aunque no esté delante
             try:
                 self.avisar("Nexus pregunta: " + texto)
@@ -192,6 +219,7 @@ class Nexus:
             finally:
                 self.ocupado = ""
             if txt:
+                self._diario("athena", txt)
                 (self.avisar if self.es_telegram() else self.decir)(txt)
         threading.Thread(target=h, daemon=True, name=f"nexus-{nombre}").start()
 
@@ -200,6 +228,7 @@ class Nexus:
         t = normalizar(texto).strip(" .?¿!¡")
         if not re.search(r"\bnexus\b|\bnexo\b", t):
             return None
+        self._diario("tu", texto)
         if re.search(r"\b(panel|pagina)\b", t):
             abrir_web("http://127.0.0.1:8765/nexus")
             return Respuesta("Te abro el panel de Nexus.")
@@ -269,6 +298,7 @@ class Nexus:
                 ind.append({"archivo": nombre, "escena": p.get("escena", ""), "apta": "publica",
                             "origen": p.get("web", ""), "fecha": time.strftime("%Y-%m-%d")})
                 nuevos.append(nombre)
+                self._diario("material", f"Clip nuevo de {p.get('web', '')}", ruta=str(CLIPS / nombre))
         if nuevos:
             self._guardar_indice(CLIPS, ind)
             self.e["clip_pedido"] = None
@@ -276,8 +306,11 @@ class Nexus:
         return nuevos
 
     def _fuente(self, usadas: set, animar: bool = True):
-        """Para cada escena del guion: el clip o la foto propia que mejor encaje con lo que se ve (solo «publica»)."""
-        fotos, clips = self._material()
+        """Para cada escena del guion: el clip o la foto propia que mejor encaje con lo que se ve. La categoría de la
+        foto (verde, ámbar, roja) se sortea con la mezcla elegida; si en esa no hay nada libre, se prueba en las otras."""
+        _, clips = self._material()
+        todas, _ = self._material(("publica", "revisar", "no"))
+        mezcla = self.e.get("mezcla") or MEZCLA
 
         def puntos(x: dict, visual: str) -> int:
             v = set(re.findall(r"[a-z]+", visual.lower()))
@@ -285,7 +318,13 @@ class Nexus:
 
         def elegir(visual_en: str, i: int):
             libres_c = [c for c in clips if c["archivo"] not in usadas]
-            libres_f = [f for f in fotos if f["archivo"] not in usadas]
+            cats = [k for k in mezcla if mezcla[k] > 0]
+            primera = random.choices(cats, weights=[mezcla[k] for k in cats])[0] if cats else "publica"
+            libres_f = []
+            for cat in [primera] + [k for k in cats if k != primera]:
+                libres_f = [f for f in todas if f.get("apta") == cat and f["archivo"] not in usadas]
+                if libres_f:
+                    break
             mejor_c = max(libres_c, key=lambda c: puntos(c, visual_en), default=None)
             mejor_f = max(libres_f, key=lambda f: puntos(f, visual_en), default=None)
             if mejor_c and (i == 0 or puntos(mejor_c, visual_en) >= max(1, puntos(mejor_f, visual_en) if mejor_f else 0)):
@@ -347,6 +386,15 @@ class Nexus:
             self._guardar_indice(REF, ind)
             return Respuesta(f"Foto {m.group(2)}: " + ("la puedo usar en los vídeos." if x["apta"] == "publica"
                                                       else "no la usaré en las redes."))
+        m = re.search(r"\bmezcla\D*(\d{1,3})\D+(\d{1,3})\D+(\d{1,3})", t)
+        if m:
+            v = [int(x) for x in m.groups()]
+            if sum(v) == 0:
+                return Respuesta("La mezcla no puede ser todo cero.")
+            self.e["mezcla"] = dict(zip(("publica", "revisar", "no"), v))
+            self._guardar()
+            self._diario("ajuste", f"Mezcla de fotos: {v[0]} % verdes, {v[1]} % ámbar, {v[2]} % rojas")
+            return Respuesta(f"Hecho: en los vídeos, {v[0]} % fotos verdes, {v[1]} % ámbar y {v[2]} % rojas.")
         if re.search(r"\bmaterial\b", t):
             self._recoger_descargas()
             ind = self._indice(REF)
@@ -389,6 +437,7 @@ class Nexus:
 
     def responder(self, texto: str) -> Respuesta:
         q = self.e.get("pregunta") or {}
+        self._diario("tu", texto)
         clave = q.get("clave", "")
         f = getattr(self, f"_resp_{clave}", None)
         if not f:
@@ -680,7 +729,7 @@ class Nexus:
         def trabajo():
             from nexus_video import crear_corto, voz_piper
             b = self.e["id"].get("biblia", {})
-            fotos, clips = self._material()
+            fotos, clips = self._material(tuple(k for k, v in (self.e.get("mezcla") or MEZCLA).items() if v))
             lugares = ", ".join(sorted({x["escena"] for x in fotos + clips}))
             g = self._ia("Eres guionista de vídeos cortos virales. Devuelve SOLO JSON.",
                          f"Guion de un vídeo vertical de 30-45 segundos para {self.e['id']['nombre']} ({b.get('tono', '')}). "
@@ -703,6 +752,7 @@ class Nexus:
             v = {"titulo": g.get("titulo", idea["titulo"]), "ruta": str(ruta), "carpeta": str(carpeta),
                  "fecha": time.strftime("%Y-%m-%d %H:%M"), "publicado": {}}
             self.e.setdefault("videos", []).append(v)
+            self._diario("video", f"Vídeo creado: {v['titulo']}", ruta=v["ruta"], caption=g.get("caption", ""))
             self.e["pregunta"] = {"clave": "video_ok", "t": time.time(), "video": len(self.e["videos"]) - 1,
                                   "texto": "¿Te gusta el vídeo? Si me dices que sí, queda listo para publicar."}
             self._guardar()
@@ -770,5 +820,12 @@ class Nexus:
         e["perfil"] = (NX / "perfil.jpg").exists()
         e["referencias"] = self._indice(REF)
         e["clips"] = self._indice(CLIPS)
+        e["mezcla"] = self.e.get("mezcla") or MEZCLA
+        e["diario"] = self._leer_diario()
+        e["comentarios"] = self.e.get("comentarios", [])
+        tipos = {".jpg", ".jpeg", ".png", ".mp4", ".wav"}
+        e["archivos"] = sorted((str(f.relative_to(NX)) for f in NX.rglob("*") if f.suffix.lower() in tipos
+                                and f.is_file() and not f.name.startswith(("esc", "junto", "voz", "img"))),
+                               reverse=True)[:500]
         e["ocupado"] = self.ocupado
         return e

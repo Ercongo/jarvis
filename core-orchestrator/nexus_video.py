@@ -76,6 +76,31 @@ def voz_qwen(texto: str, destino: Path, ref_wav: Path, ref_texto: str) -> bool:
         return False
 
 
+def voz_elevenlabs(texto: str, destino: Path) -> bool:
+    """Una voz de ElevenLabs (por ejemplo «Sofia» de su biblioteca) con la clave de la persona:
+    «clave de elevenlabs …» y «voz de elevenlabs <id de la voz>». El plan gratis no permite uso comercial."""
+    try:
+        from estudio import leer_claves
+        import urllib.request
+        c = leer_claves()
+        clave, voz = c.get("elevenlabs"), c.get("elevenlabs_voz")
+        if not (clave and voz):
+            return False
+        req = urllib.request.Request(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voz}?output_format=mp3_44100_128",
+            data=json.dumps({"text": texto, "model_id": "eleven_multilingual_v2", "language_code": "es"}).encode(),
+            headers={"xi-api-key": clave, "Content-Type": "application/json"})
+        mp3 = destino.with_suffix(".mp3")
+        with urllib.request.urlopen(req, timeout=120) as r:
+            mp3.write_bytes(r.read())
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp3), "-ar", "44100", "-ac", "1", str(destino)],
+                       check=True)
+        mp3.unlink(missing_ok=True)
+        return destino.stat().st_size > 1000
+    except Exception:
+        return False
+
+
 def voz_piper(voz_piper, texto: str, destino: Path, hablante: int = 0) -> None:
     """La voz del asistente (sharvard) con su otra hablante (la 0 es femenina)."""
     from piper import SynthesisConfig
@@ -175,7 +200,7 @@ def crear_corto(guion: dict, identidad: dict, carpeta: Path, imagen: Callable[[s
     escenas = []
     for i, e in enumerate(guion["escenas"][:8]):
         audio = carpeta / f"voz{i}.wav"
-        if voz_ref and voz_qwen(e["texto"], audio, *voz_ref):
+        if voz_elevenlabs(e["texto"], audio) or voz_ref and voz_qwen(e["texto"], audio, *voz_ref):
             pass
         elif not voz_kokoro(e["texto"], audio):
             if voz_reserva is None:

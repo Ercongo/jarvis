@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nexus · proyecto de redes</title>
+<title>Asuka · Nexus</title>
 <style>
   @font-face { font-family: "Orbitron"; font-weight: 700; src: url(/fuentes/orbitron-latin-700-normal.woff2) format("woff2"); }
   @font-face { font-family: "Rajdhani"; font-weight: 500; src: url(/fuentes/rajdhani-latin-500-normal.woff2) format("woff2"); }
@@ -44,6 +44,17 @@
   .vacio { color:var(--tenue); }
   dl { margin:0; } dt { color:var(--cian); margin-top:8px; } dd { margin:2px 0 0 0; color:var(--tinta); }
   .ocupado { color:var(--oro); }
+  section.ancha { grid-column:1 / -1; }
+  #diario { max-height:520px; overflow:auto; }
+  .ev { display:grid; grid-template-columns:150px 90px 1fr; gap:10px; padding:6px 0; border-bottom:1px solid var(--linea); }
+  .ev time { color:var(--tenue); font-size:14px; } .ev b { font-size:13px; letter-spacing:.08em; }
+  .ev.tu b { color:var(--cian); } .ev.athena b { color:var(--rojo); } .ev.video b, .ev.material b { color:var(--ok); }
+  .ev video, .ev img { max-width:220px; max-height:300px; display:block; margin-top:6px; }
+  .pub { border-bottom:1px solid var(--linea); padding:10px 0; } .pub ul { margin:6px 0 0; padding-left:18px; }
+  .galeria { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:8px; }
+  .galeria a { color:var(--tenue); font-size:12px; text-decoration:none; overflow:hidden; }
+  .galeria img, .galeria video { width:100%; aspect-ratio:9/16; object-fit:cover; border:1px solid var(--linea); display:block; }
+  .galeria .wav { padding:8px; border:1px solid var(--linea); }
   .refs { display:grid; grid-template-columns:repeat(auto-fill, minmax(78px, 1fr)); gap:6px; }
   .refs figure { margin:0; position:relative; }
   .refs img { width:100%; aspect-ratio:3/4; object-fit:cover; border:2px solid var(--linea); display:block; }
@@ -69,11 +80,19 @@
     contraseña); el asistente le guía y apunta el usuario.</p></section>
   <section><h2>Retratos</h2><div class="rejilla" id="retratos"></div></section>
   <section><h2>Material del personaje</h2>
-    <p class="vacio" style="font-size:14px;margin-top:0">Verde: la uso sola en los vídeos · ámbar: solo si me la apruebas
-      («nexus, aprueba la foto 12») · rojo: no se sube.</p>
+    <p class="vacio" style="font-size:14px;margin-top:0" id="mezcla">Verde, ámbar y rojo: la mezcla con que salen en los
+      vídeos se cambia con «nexus, mezcla 60 35 5».</p>
     <div class="refs" id="refs"></div><div id="clips"></div></section>
   <section><h2>Vídeos</h2><div id="videos" class="vacio">Todavía no hay vídeos.</div></section>
   <section><h2>Biblia del personaje</h2><dl id="biblia" class="vacio">Aún no está hecha.</dl></section>
+  <section class="ancha"><h2>Diario de Asuka</h2>
+    <p class="vacio" style="font-size:14px;margin-top:0">Todo lo que ha pasado: lo que pregunta Athena, lo que contestas,
+      vídeos, clips y publicaciones. Lo más reciente arriba.</p>
+    <div id="diario" class="vacio">Todavía no hay nada apuntado.</div></section>
+  <section class="ancha"><h2>Publicado y comentarios</h2>
+    <div id="publicado" class="vacio">Aún no se ha publicado nada. Cuando las redes estén conectadas (paso «Publicación
+      automática»), aquí salen cada publicación y sus comentarios.</div></section>
+  <section class="ancha"><h2>Todos los archivos</h2><div class="galeria" id="archivos"></div></section>
   <section><h2>Plan semanal</h2><div id="calendario" class="vacio">Se hace en el último paso.</div></section>
 </main>
 <script>
@@ -144,6 +163,57 @@ function pintar(d) {
     const v = el("video"); v.controls = true; v.preload = "none"; v.muted = true; v.title = c.escena;
     v.src = archivo("clips/" + c.archivo); cl.appendChild(v);
   });
+  // mezcla
+  const mz = d.mezcla || {};
+  $("mezcla").textContent = "En los vídeos: " + (mz.publica || 0) + " % verdes, " + (mz.revisar || 0) + " % ámbar, " +
+    (mz.no || 0) + " % rojas. Se cambia con «nexus, mezcla 60 35 5».";
+  // diario
+  const dia = d.diario || [];
+  if (dia.length) {
+    const c = $("diario"); c.textContent = ""; c.className = "";
+    const nombres = { tu: "TÚ", athena: "ATHENA", video: "VÍDEO", material: "MATERIAL", ajuste: "AJUSTE", publicado: "PUBLICADO", comentario: "COMENTARIO" };
+    for (const ev of dia.slice().reverse()) {
+      const fila = el("div", null, "ev " + ev.tipo);
+      fila.appendChild(el("time", ev.t)); fila.appendChild(el("b", nombres[ev.tipo] || ev.tipo.toUpperCase()));
+      const cuerpo = el("div", ev.texto);
+      if (ev.ruta) {
+        const r = rel(ev.ruta);
+        const m = /\.mp4$/i.test(r) ? el("video") : /\.(jpe?g|png)$/i.test(r) ? el("img") : null;
+        if (m) { m.src = archivo(r); if (m.tagName === "VIDEO") { m.controls = true; m.preload = "none"; } cuerpo.appendChild(m); }
+      }
+      if (ev.caption) cuerpo.appendChild(el("div", ev.caption, "vacio"));
+      fila.appendChild(cuerpo); c.appendChild(fila);
+    }
+  }
+  // publicado y comentarios
+  const pubs = (d.videos || []).filter(v => v.publicado && Object.keys(v.publicado).length);
+  if (pubs.length) {
+    const c = $("publicado"); c.textContent = ""; c.className = "";
+    for (const v of pubs.slice().reverse()) {
+      const caja = el("div", null, "pub");
+      caja.appendChild(el("b", v.titulo));
+      for (const [red, info] of Object.entries(v.publicado)) {
+        const linea = el("div", (d.redes[red] || red) + ": ");
+        const url = typeof info === "string" ? info : info.url;
+        if (url) { const a = el("a", url); a.href = url; a.target = "_blank"; a.style.color = "var(--cian)"; linea.appendChild(a); }
+        caja.appendChild(linea);
+      }
+      const coms = (d.comentarios || []).filter(x => x.video === v.titulo);
+      if (coms.length) { const ul = el("ul"); coms.forEach(x => ul.appendChild(el("li", (x.autor ? "@" + x.autor + ": " : "") + x.texto + (x.red ? "  (" + (d.redes[x.red] || x.red) + ")" : "")))); caja.appendChild(ul); }
+      c.appendChild(caja);
+    }
+  }
+  // todos los archivos
+  const ga = $("archivos"); ga.textContent = "";
+  (d.archivos || []).forEach((r) => {
+    const a = el("a"); a.href = archivo(r); a.target = "_blank"; a.title = r;
+    if (/\.mp4$/i.test(r)) { const v = el("video"); v.preload = "metadata"; v.muted = true; v.src = archivo(r) + "#t=0.5"; a.appendChild(v); }
+    else if (/\.wav$/i.test(r)) a.appendChild(el("div", "🔊 " + r, "wav"));
+    else { const i = el("img"); i.loading = "lazy"; i.src = archivo(r); a.appendChild(i); }
+    a.appendChild(el("div", r.split("/").pop()));
+    ga.appendChild(a);
+  });
+  if (!ga.childNodes.length) ga.appendChild(el("p", "Sin archivos todavía.", "vacio"));
   // vídeos
   const vs = d.videos || [];
   if (vs.length) {
@@ -175,8 +245,13 @@ function pintar(d) {
     }
   }
 }
+let ultimo = "";
 async function cargar() {
-  try { pintar(await (await fetch("/nexus/datos?t=" + Date.now())).json()); } catch (e) { /* el asistente se está reiniciando */ }
+  try {
+    const txt = await (await fetch("/nexus/datos?t=" + Date.now())).text();
+    if (txt === ultimo) return;                 // sin cambios: no se repinta (no corta un vídeo que se está viendo)
+    ultimo = txt; pintar(JSON.parse(txt));
+  } catch (e) { /* el asistente se está reiniciando */ }
 }
 cargar(); setInterval(cargar, 10000);
 </script>
