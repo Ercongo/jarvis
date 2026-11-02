@@ -34,6 +34,7 @@ cabe destacar, en definitiva, la clave está en, juega un papel fundamental); lo
 de tres cosas porque sí; los finales positivos genéricos; las preguntas retóricas de manual («¿Te imaginas…?»);
 los sinónimos rebuscados en lugar de repetir la palabra normal; las rayas largas (—); las comillas curvas; el
 exceso de emojis (máximo 1 o 2, y solo si pegan); las mayúsculas en cada palabra; los saludos de anuncio.
+No metas muletillas de relleno («vale», «aquí tienes», «en serio») si no aportan; como mucho una.
 Pon: frases de largo distinto, alguna muy corta; opiniones de verdad; detalles concretos en vez de generalidades;
 humor seco si encaja; palabras normales de una chica de veintitantos de España (sin forzar jerga). Puede haber
 alguna frase sin verbo o algo de desorden, como se escribe de verdad. Mantén el sentido y los datos.

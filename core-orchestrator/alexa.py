@@ -149,7 +149,9 @@ class Alexa:
                 try:
                     self.refrescar_pantalla()
                 except Exception as e:
-                    self.log(f"alexa: pantalla {e!r}")
+                    if time.time() - getattr(self, "_ultimo_aviso", 0) > 3600:   # una línea por hora, no cada minuto
+                        self._ultimo_aviso = time.time()
+                        self.log(f"alexa: pantalla {e!r} (se sigue intentando)")
                 self._refrescar.wait(cada)
                 self._refrescar.clear()
         threading.Thread(target=bucle, daemon=True, name="alexa-pantalla").start()
@@ -163,7 +165,10 @@ class Alexa:
             self.ui.enviar(tipo="casa", conectada=False,
                            aviso="Di «conecta alexa»" if est.get("login") else "Conectando…")
             return
-        r = _pedir("/estados", timeout=60)
+        try:
+            r = _pedir("/estados", timeout=60)
+        except Exception:                               # Amazon a veces tarda más de un minuto: se deja lo de antes
+            r = None
         if isinstance(r, list):
             aparatos = [{"id": d["id"], "nombre": " ".join(str(d.get("nombre", "")).split()), "tipo": d.get("tipo", ""),
                          "encendido": d.get("encendido"), "brillo": d.get("brillo"),
@@ -172,7 +177,12 @@ class Alexa:
             aparatos.sort(key=lambda d: normalizar(d["nombre"]))
         else:
             aparatos = (self.ui.casa_ev or {}).get("aparatos") or []
-        a = _pedir("/avisos", timeout=40)
+        try:
+            a = _pedir("/avisos", timeout=40)
+        except Exception:
+            a = None
+        if r is None and a is None:
+            raise TimeoutError("Amazon no contesta")
         avisos = [self._aviso(x) for x in a] if isinstance(a, list) else []
         self.ui.enviar(tipo="casa", conectada=True, aparatos=aparatos,
                        avisos=[x for x in avisos if x["activa"]][:8],
@@ -448,7 +458,12 @@ class Alexa:
         est = self._estado()
         if not est.get("listo"):
             return self._no_lista(est)
-        a = _pedir("/avisos", timeout=40)
+        try:
+            a = _pedir("/avisos", timeout=40)
+        except Exception:
+            a = None
+        if r is None and a is None:
+            raise TimeoutError("Amazon no contesta")
         if not isinstance(a, list):
             return Respuesta("No consigo ver las alarmas de los Echo ahora mismo.")
         avisos = [self._aviso(x) for x in a]

@@ -529,7 +529,8 @@ class Nexus:
     def plan_del_dia(self, forzar: bool = False) -> str:
         """Lo que se publica hoy en cada red: textos ya humanizados, foto o vídeo, y la hora buena."""
         hoy = time.strftime("%Y-%m-%d")
-        if not forzar and any(c.get("dia") == hoy for c in self.e.get("cola", [])):
+        if not forzar and any(c.get("dia") == hoy and c.get("estado") in ("pendiente", "publicado")
+                              for c in self.e.get("cola", [])):
             return "El plan de hoy ya está hecho; lo tienes en la página de Asuka."
         b = self.e["id"].get("biblia", {})
         usadas: set = set()
@@ -541,7 +542,8 @@ class Nexus:
                      f"cada una sobre su foto: x (foto: {desc['x']}; post de máx 260 caracteres), instagram (foto: "
                      f"{desc['instagram']}; caption 1-3 frases + 5 hashtags), facebook (foto: {desc['facebook']}; post "
                      f"corto), pinterest (foto: {desc['pinterest']}; titulo máx 90 y descripcion máx 400 con palabras "
-                     "que se buscan). Nada de anuncios ni frases hechas. JSON: {\"x\": \"…\", \"instagram\": \"…\", "
+                     "que se buscan). Nada de anuncios ni frases hechas. Cada texto distinto en arranque y ritmo; sus muletillas, "
+                     "como mucho una por texto y nunca la misma en dos publicaciones. JSON: {\"x\": \"…\", \"instagram\": \"…\", "
                      "\"facebook\": \"…\", \"pinterest_titulo\": \"…\", \"pinterest\": \"…\", "
                      "\"horas\": {\"x\": \"HH:MM\", \"instagram\": \"HH:MM\", \"facebook\": \"HH:MM\", \"pinterest\": \"HH:MM\"}}",
                      max_tokens=1200)
@@ -551,7 +553,8 @@ class Nexus:
         for k, f in fotos.items():
             if not f or not d.get(k):
                 continue
-            item = {"id": f"{hoy}-{k}", "dia": hoy, "red": k, "tipo": "foto", "archivo": f"referencias/{f['archivo']}",
+            item = {"id": f"{hoy}-{k}-{int(time.time()) % 100000}", "dia": hoy, "red": k, "tipo": "foto",
+                    "plan_auto": int(time.strftime("%H")) >= 10, "archivo": f"referencias/{f['archivo']}",
                     "texto": self._humano(d[k], "post" if k in ("x", "facebook") else "caption", tono, lim[k]),
                     "hora": (d.get("horas") or {}).get(k, ""), "estado": "pendiente"}
             if k == "pinterest":
@@ -600,6 +603,7 @@ class Nexus:
                 return {"ok": False, "error": "no está en la cola"}
             if tipo == "descartar":
                 c["estado"] = "descartado"
+                self._diario("ajuste", f"Descartada la publicación de {REDES[c['red']]['nombre']}: {c['texto'][:80]}")
             elif tipo == "youtube":
                 if not (self.youtube and self.youtube.conectado):
                     return {"ok": False, "error": "YouTube sin conectar"}
@@ -807,7 +811,8 @@ class Nexus:
             try:
                 hoy = time.strftime("%Y-%m-%d")
                 if (int(time.strftime("%H")) >= 10 and self.e.get("id", {}).get("biblia")
-                        and not any(c.get("dia") == hoy for c in self.e.get("cola", []))):
+                        and not any(c.get("dia") == hoy and c.get("plan_auto") for c in self.e.get("cola", []))
+                        and not any(c.get("dia") == hoy and c.get("estado") == "pendiente" for c in self.e.get("cola", []))):
                     txt = self.plan_del_dia()
                     self.avisar("Asuka: " + txt)
                 hechas = self.publicar_pendientes()
