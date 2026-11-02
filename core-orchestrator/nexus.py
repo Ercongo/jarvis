@@ -819,10 +819,13 @@ class Nexus:
                 if hechas:
                     self.avisar("Asuka ha publicado: " + " · ".join(hechas))
                 if (int(time.strftime("%H")) >= 11 and self.e.get("fotos_dia") != hoy
-                        and self.e.get("id", {}).get("biblia")):
-                    self.e["fotos_dia"] = hoy                     # 2 fotos nuevas al día, si hay cupo gratis
+                        and self.e.get("id", {}).get("biblia")
+                        and time.time() - self.e.get("fotos_intento", 0) > 3 * 3600):
+                    self.e["fotos_intento"] = time.time()         # 2 fotos nuevas al día; sin cupo, otra vez en 3 h
                     self._guardar()
-                    self.crear_fotos(2)
+                    if "He hecho" in self.crear_fotos(2):
+                        self.e["fotos_dia"] = hoy
+                        self._guardar()
                 n = self.leer_comentarios()
                 if n:
                     self.avisar(f"Asuka tiene {n} comentario{'s' if n > 1 else ''} nuevo{'s' if n > 1 else ''} en "
