@@ -67,7 +67,8 @@ def _http(metodo: str, url: str, datos: bytes | None = None, cab: dict | None = 
             detalle = json.loads(detalle).get("error", {}).get("message", detalle) if detalle.startswith("{") else detalle
         except (ValueError, AttributeError):
             pass
-        raise ErrorRed(f"HTTP {e.code}: {str(detalle)[:300]}") from e
+        import re                                         # Meta repite el token en sus errores: no se muestra
+        raise ErrorRed(f"HTTP {e.code}: {re.sub(r'EAA[0-9A-Za-z]+', '[token]', str(detalle))[:300]}") from e
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise ErrorRed(f"sin conexión ({e})") from e
 
