@@ -7,8 +7,6 @@ def preguntar(txt, secreto=False, comprobar=None, ayuda=""):
     """Pregunta hasta que el valor tiene la forma esperada. Lo secreto no se ve: solo se dice cuántos caracteres llegaron."""
     while True:
         v = "".join((getpass.getpass if secreto else input)(txt).split())
-        if v.count("EAA") > 1:                           # pegado dos veces seguidas: vale la primera copia
-            v = "EAA" + v.split("EAA")[1]
         if secreto:
             print(f"   (recibidos {len(v)} caracteres)")
         if not comprobar or comprobar(v):
@@ -32,8 +30,7 @@ if input("¿Configurar Meta ahora? [s/N] ").lower().startswith("s"):
         paginas = _http("GET", f"{GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account&"
                                f"access_token={largo['access_token']}").get("data", [])
     except ErrorRed as e:
-        import re
-        print("✖ Meta no lo acepta:", re.sub(r"EAA\w+", "[token]", str(e))); paginas = []
+        print("✖ Meta no lo acepta:", e); paginas = []
     if paginas:
         for i, p in enumerate(paginas, 1):
             print(f"  {i}. {p['name']}" + ("  (con Instagram)" if p.get("instagram_business_account") else ""))
