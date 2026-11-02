@@ -3,16 +3,27 @@ import getpass, json, os, sys, urllib.parse, urllib.request
 sys.path.insert(0, os.path.expanduser("~/jarvis/core-orchestrator"))
 from nexus_publicar import CONF, GRAPH, _http, _oauth1, config, ErrorRed
 
-def preguntar(txt, secreto=False):
-    v = (getpass.getpass if secreto else input)(txt).strip()
-    return v
+def preguntar(txt, secreto=False, comprobar=None, ayuda=""):
+    """Pregunta hasta que el valor tiene la forma esperada. Lo secreto no se ve: solo se dice cuántos caracteres llegaron."""
+    while True:
+        v = "".join((getpass.getpass if secreto else input)(txt).split())
+        if secreto:
+            print(f"   (recibidos {len(v)} caracteres)")
+        if not comprobar or comprobar(v):
+            return v
+        print("   ✖ Eso no parece correcto. " + ayuda)
 
 c = config()
 print("\n=== Facebook + Instagram (Meta) ===")
 if input("¿Configurar Meta ahora? [s/N] ").lower().startswith("s"):
-    app = preguntar("ID de la app (App ID): ")
-    secreto = preguntar("Clave secreta de la app (App Secret, no se ve): ", True)
-    corto = preguntar("Token de acceso del Explorador de la Graph API (no se ve): ", True)
+    app = preguntar("ID de la app (App ID, solo números): ", comprobar=lambda v: v.isdigit() and 10 <= len(v) <= 20,
+                    ayuda="Es el «Identificador de la app»: solo números.")
+    secreto = preguntar("Clave secreta de la app (App Secret, no se ve): ", True,
+                        comprobar=lambda v: len(v) == 32 and all(c in "0123456789abcdef" for c in v.lower()),
+                        ayuda="Son 32 letras y números (Configuración de la app → Básica → Mostrar). Vuelve a pegarla.")
+    corto = preguntar("Token de acceso del Explorador de la Graph API (no se ve): ", True,
+                      comprobar=lambda v: v.startswith("EAA") and len(v) > 100,
+                      ayuda="El token empieza por «EAA» y es muy largo. Vuelve a generarlo y pégalo.")
     try:
         largo = _http("GET", f"{GRAPH}/oauth/access_token?" + urllib.parse.urlencode({
             "grant_type": "fb_exchange_token", "client_id": app, "client_secret": secreto, "fb_exchange_token": corto}))
@@ -38,8 +49,14 @@ if input("¿Configurar Meta ahora? [s/N] ").lower().startswith("s"):
 
 print("\n=== X ===")
 if input("¿Configurar X ahora? [s/N] ").lower().startswith("s"):
-    x = {"api_key": preguntar("API Key: "), "api_secret": preguntar("API Key Secret (no se ve): ", True),
-         "token": preguntar("Access Token: "), "token_secret": preguntar("Access Token Secret (no se ve): ", True)}
+    print("  (Son las 4 claves de developer.x.com → tu app → Keys and tokens. No son las de Meta.)")
+    no_meta = lambda v: not v.isdigit() and not v.startswith("EAA") and len(v) >= 20
+    aviso = "Esa no es una clave de X (parece de Meta). Cópiala de developer.x.com → Keys and tokens."
+    x = {"api_key": preguntar("API Key (no se ve): ", True, no_meta, aviso),
+         "api_secret": preguntar("API Key Secret (no se ve): ", True, no_meta, aviso),
+         "token": preguntar("Access Token (no se ve): ", True, lambda v: "-" in v and no_meta(v),
+                            "El Access Token de X lleva un guion en medio (números-letras)."),
+         "token_secret": preguntar("Access Token Secret (no se ve): ", True, no_meta, aviso)}
     try:
         url = "https://api.x.com/2/users/me"
         yo = _http("GET", url, None, {"Authorization": _oauth1("GET", url, x)})
