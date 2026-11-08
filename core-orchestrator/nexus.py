@@ -369,8 +369,7 @@ class Nexus:
                 abrir_web(u)
             return Respuesta(f"Te abro sus {len(urls)} perfiles." if urls else "Aún no tengo sus cuentas apuntadas.")
         if "asuka" in t and abrir and re.search(r"\b(gmail|correo|email)\b", t):
-            abrir_web("https://mail.google.com/mail/u/?authuser=" + (self.e["id"].get("correo") or
-                                                                     "(sin apuntar)"))
+            abrir_web("https://mail.google.com/mail/u/?authuser=" + (self.e["id"].get("correo") or ""))
             return Respuesta("Te abro el Gmail de Asuka.")
         # sus vídeos: reproducirlos en la pantalla o mandarlos por Telegram
         mandar = re.search(r"\b(manda\w*|envia\w*|pasa\w*)\b", t)
