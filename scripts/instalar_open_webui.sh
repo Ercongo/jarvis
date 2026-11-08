@@ -59,6 +59,7 @@ umask 022
 
 paso "Servicio «open-webui» (no arranca solo: lo enciende el asistente cuando lo pides)"
 mkdir -p "$HOME/.config/systemd/user"
+TOPE_MEM=$([ "$(awk '/MemTotal/{print int($2/1048576)}' /proc/meminfo)" -ge 12 ] && echo 3000M || echo 1600M)   # según la RAM
 cat > "$HOME/.config/systemd/user/open-webui.service" <<EOF
 [Unit]
 Description=Open WebUI para el asistente (solo 127.0.0.1:8080)
@@ -71,7 +72,7 @@ ExecStart=$BASE/venv/bin/open-webui serve --host 127.0.0.1 --port 8080
 Restart=on-failure
 RestartSec=10
 Nice=5
-MemoryMax=1600M
+MemoryMax=$TOPE_MEM
 TimeoutStartSec=600
 EOF
 systemctl --user daemon-reload

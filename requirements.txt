@@ -97,3 +97,5 @@ uritemplate==4.2.0
 xlsxwriter==3.2.9
 yarl==1.25.1
 firecrawl-anydoc==0.2.4
+yt-dlp==2026.10.26
+kaggle==2.2.5

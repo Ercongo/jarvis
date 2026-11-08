@@ -84,10 +84,12 @@ PUERTO_UI = 8765
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 MODELO_LLM = os.environ.get("JARVIS_LLM", "qwen2.5:1.5b")
 MODELO_WHISPER = os.environ.get("JARVIS_WHISPER", "base")
+RESERVA_OLLAMA = "24h" if os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") >= 12 * 2**30 else "30m"
 BEAM_WHISPER = int(os.environ.get("JARVIS_BEAM", "1"))
 USUARIO = os.environ.get("JARVIS_USUARIO", "").strip()
 SENSIBILIDAD = float(os.environ.get("JARVIS_SENSIBILIDAD", "1.0"))
 SEGUIMIENTO = float(os.environ.get("JARVIS_SEGUIMIENTO", "6"))
+INTERRUMPIR = os.environ.get("JARVIS_INTERRUMPIR", "1") != "0"   # «Athena, calla» mientras habla
 
 RATE = 16000
 FRAME = 480                 # 30 ms de audio por bloque
@@ -169,6 +171,14 @@ def _ordenes_fijas() -> list[str]:
                     "que hora es", "que dia es hoy", "no me molestes", "sube el volumen", "baja el volumen"]
 
 
+def _nexus_directo(t: str) -> bool:
+    try:
+        from nexus import es_entrada_directa
+        return es_entrada_directa(t)
+    except Exception:
+        return False
+
+
 def es_orden_fija(texto: str) -> bool:
     t = normalizar(texto).strip(" .?¿!¡")
     if not t:
@@ -195,6 +205,13 @@ def es_orden_fija(texto: str) -> bool:
                          r"|\byoutube\b.*\b(resum\w*|aprend\w*|explica\w*)\b|\b(resum\w*|aprend\w*)\b.*\byoutube\b"
                          r"|\bresume\w* (el|los|este) videos?\b|\b(aprend\w*|investiga\w*) (tu solo|por tu cuenta|sola)\b", t) \
             or re.search(r"\bnexus\b", t) \
+            or re.search(r"\b(obsidian|boveda)\b", t) \
+            or re.search(r"github[. ]?com|\banalisis (de|del) |\banaliza\w* (el |este |ese )?repositorio\b", t) \
+            or _nexus_directo(t) \
+            or re.search(r"\b(asuka|azuka|azucar|azuca|asuca|askua)\b", t) \
+            or re.search(r"\bultimos? videos?\b|\bvideos? (que has|creados?|hechos?)\b|\bvideo\b.*\b(pantalla|estoy viendo|"
+                         r"se (esta )?reproduc\w*|reproduzco)\b", t) \
+            or re.search(r"\b(captura|pantallazo)\b", t) \
             or re.search(r"\b(radio|emisora|podcast|pódcast|episodio)\b|^(pon|ponme|sintoniza)\w* (la )?(cadena ser|los ?40|"
                          r"la cope|cope|onda cero|rne|cadena dial|cadena 100|europa fm|kiss fm|rock fm|esradio)$|\bcopias? de seguridad\b|\b(ultima|cuantas) copias?\b"
                          r"|\b(velocidad|test)\b.*\b(internet|conexion|wifi|fibra)\b|\bcomo (va|anda) (el |la )?(internet|wifi|fibra)\b", t) \
@@ -246,6 +263,9 @@ def sistema_local() -> str:
         texto = texto.replace("el asistente personal", "la asistente personal").replace(
             "con el estilo del mayordomo", "con el estilo de la mayordoma")
         texto += " Habla de ti en femenino (estoy lista, encantada)."
+    if (p.get("estilo") or "coloquial") == "coloquial":
+        from cerebro import ESTILO_COLOQUIAL
+        texto += " " + ESTILO_COLOQUIAL
     u = p.get("usuario") or {}
     if u.get("nombre"):
         texto += f" La persona se llama {u['nombre']}."
@@ -306,6 +326,8 @@ class Interfaz:
         self.calendario = None                          # lo conecta Jarvis: la página /calendario lo usa
         self.asistente = None                           # el asistente de configuración (/asistente)
         self.ordenar = None                             # POST /orden: lo conecta Jarvis
+        self.decir_fn = None                            # POST /decir y /callar
+        self.callar_fn = None
         if not activa:
             return
         try:
@@ -316,6 +338,11 @@ class Interfaz:
         srv.daemon_threads = True
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         log(f"interfaz en http://127.0.0.1:{PUERTO_UI}")
+        try:                                            # el panel de Nexus en el móvil (puerto 8766, con llave)
+            import pasarela_movil
+            pasarela_movil.arrancar(log)
+        except Exception as e:
+            log(f"móvil: {e!r}")
 
     def enviar(self, **ev) -> None:
         ev["t"] = time.time()
@@ -390,16 +417,74 @@ class Interfaz:
                     uid = self.path.split("?")[0][len("/nexus/correo"):].strip("/")
                     r = nexus_correo.leer(uid) if uid else nexus_correo.lista()
                     self._enviar(200, json.dumps(r, ensure_ascii=False).encode(), "application/json")
+                elif self.path.startswith("/nexus/mini/") and ui.nexus:
+                    # miniatura en caché (foto o fotograma): el panel en el móvil no descarga fotos de 5 MB
+                    rel = urllib.parse.unquote(self.path[len("/nexus/mini/"):].split("?")[0])
+                    q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                    try:
+                        mini = ui.nexus.miniatura(rel, int(q.get("w", ["360"])[0]))
+                    except (ValueError, OSError):
+                        mini = None
+                    if mini:
+                        datos = mini.read_bytes()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "image/jpeg")
+                        self.send_header("Content-Length", str(len(datos)))
+                        self.send_header("Cache-Control", "max-age=86400")
+                        self.end_headers()
+                        self.wfile.write(datos)
+                    else:
+                        self.send_error(404)
+                elif self.path == "/nexus/manifest.json" and ui.nexus:
+                    m = {"name": "Nexus · Asuka", "short_name": "Nexus", "start_url": "/nexus", "display": "standalone",
+                         "background_color": "#04070d", "theme_color": "#04070d",
+                         "icons": [{"src": "/nexus/icono.png", "sizes": "192x192", "type": "image/png"}]}
+                    self._enviar(200, json.dumps(m).encode(), "application/manifest+json")
+                elif self.path == "/nexus/icono.png" and ui.nexus:
+                    from nexus import NX
+                    ico = NX / ".mini" / "icono.png"
+                    if not ico.is_file() and (NX / "perfil.jpg").is_file():
+                        ico.parent.mkdir(exist_ok=True)
+                        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(NX / "perfil.jpg"), "-vf",
+                                        "crop='min(iw,ih)':'min(iw,ih)',scale=192:192", str(ico)], timeout=30)
+                    if ico.is_file():
+                        self._enviar(200, ico.read_bytes(), "image/png")
+                    else:
+                        self.send_error(404)
                 elif self.path.startswith("/nexus/archivo/") and ui.nexus:
                     # solo archivos dentro de ~/jarvis/nexus (retratos, vídeos, voz)
                     from nexus import NX
                     rel = urllib.parse.unquote(self.path[len("/nexus/archivo/"):].split("?")[0])
                     f = (NX / rel).resolve()
-                    if NX.resolve() in f.parents and f.is_file() and f.suffix.lower() in (".jpg", ".png", ".mp4", ".wav"):
-                        tipo = {".jpg": "image/jpeg", ".png": "image/png", ".mp4": "video/mp4", ".wav": "audio/wav"}[f.suffix.lower()]
-                        self._enviar(200, f.read_bytes(), tipo)
+                    tipos = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".mp4": "video/mp4",
+                             ".wav": "audio/wav", ".webp": "image/webp", ".mp3": "audio/mpeg"}
+                    if NX.resolve() in f.parents and f.is_file() and f.suffix.lower() in tipos:
+                        if "descargar" in self.path.split("?", 1)[-1]:      # el botón ⬇: que se guarde, no que se abra
+                            self._enviar_archivo(f, tipos[f.suffix.lower()], f.name)
+                        elif f.suffix.lower() == ".mp4":                   # vídeos a trozos (el móvil los
+                            self._enviar_video(f)                          # pide por partes para avanzar)
+                        else:
+                            self._enviar(200, f.read_bytes(), tipos[f.suffix.lower()])
                     else:
                         self.send_error(404)
+                elif self.path.startswith("/nexus/zip") and ui.nexus:
+                    # «Descargar todo»: las fotos, los vídeos o todo el material de Asuka en un zip
+                    import tempfile, zipfile
+                    from nexus import NX
+                    que = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("que", ["todo"])[0]
+                    fotos, videos = {".jpg", ".jpeg", ".png"}, {".mp4"}
+                    ext = fotos if que == "fotos" else videos if que == "videos" else fotos | videos | {".wav"}
+                    archivos = [x for x in sorted(NX.rglob("*")) if x.is_file() and x.suffix.lower() in ext
+                                and not x.name.startswith(("esc", "junto", "voz", "img", "muestra.")) and "/buzon/" not in str(x)]
+                    tmp = Path(tempfile.mkstemp(suffix=".zip", prefix="asuka-")[1])
+                    try:
+                        with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as z:      # ya van comprimidos
+                            for x in archivos:
+                                z.write(x, str(x.relative_to(NX)))
+                        self._enviar_archivo(tmp, "application/zip",
+                                             f"asuka-{que}-{time.strftime('%Y%m%d')}.zip")
+                    finally:
+                        tmp.unlink(missing_ok=True)
                 elif self.path.startswith("/calendario.json"):
                     datos = ui.calendario.datos_web() if ui.calendario else {"eventos": []}
                     self._enviar(200, json.dumps(datos, ensure_ascii=False).encode(), "application/json")
@@ -481,6 +566,45 @@ class Interfaz:
                 else:
                     self.send_error(404)
 
+            def _enviar_archivo(self, f: Path, tipo: str, nombre: str) -> None:
+                """Un archivo grande a trozos, para guardarlo (no se carga entero en memoria)."""
+                self.send_response(200)
+                self.send_header("Content-Type", tipo)
+                self.send_header("Content-Length", str(f.stat().st_size))
+                self.send_header("Content-Disposition",
+                                 "attachment; filename*=UTF-8''" + urllib.parse.quote(nombre))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                with open(f, "rb") as fh:
+                    while trozo := fh.read(1 << 20):
+                        self.wfile.write(trozo)
+
+            def _enviar_video(self, f: Path) -> None:
+                total = f.stat().st_size
+                m = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))
+                ini, fin = 0, total - 1
+                if m and (m.group(1) or m.group(2)):
+                    if m.group(1):
+                        ini = int(m.group(1))
+                        fin = min(int(m.group(2)), total - 1) if m.group(2) else total - 1
+                    else:
+                        ini = max(0, total - int(m.group(2)))
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {ini}-{fin}/{total}")
+                else:
+                    self.send_response(200)
+                self.send_header("Content-Type", "video/mp4")
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", str(fin - ini + 1))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                with open(f, "rb") as fh:
+                    fh.seek(ini)
+                    queda = fin - ini + 1
+                    while queda > 0 and (trozo := fh.read(min(1 << 20, queda))):
+                        self.wfile.write(trozo)
+                        queda -= len(trozo)
+
             def _enviar(self, codigo: int, datos: bytes, tipo: str) -> None:
                 self.send_response(codigo)
                 self.send_header("Content-Type", tipo)
@@ -532,6 +656,19 @@ class Interfaz:
                         r = {"ok": False, "error": type(e).__name__}
                     self._enviar(200, json.dumps(r, ensure_ascii=False).encode(), "application/json")
                     return
+                if self.path in ("/decir", "/callar") and ui.decir_fn and self.headers.get("X-Jarvis") == "1":
+                    # la pantalla (botón «callar») y las pruebas: hablar o cortar lo que está diciendo
+                    n = int(self.headers.get("Content-Length") or 0)
+                    try:
+                        texto = str(json.loads(self.rfile.read(min(n, 20000)) or b"{}").get("texto") or "")
+                    except (ValueError, AttributeError):
+                        texto = ""
+                    if self.path == "/callar":
+                        ui.callar_fn()
+                    elif texto.strip():
+                        threading.Thread(target=ui.decir_fn, args=(texto,), daemon=True).start()
+                    self._enviar(200, b'{"ok": true}', "application/json")
+                    return
                 if self.path == "/orden" and ui.ordenar and self.headers.get("X-Jarvis") == "1":
                     # órdenes por escrito desde el propio portátil (pruebas: prueba_todo.sh). Sin voz.
                     n = int(self.headers.get("Content-Length") or 0)
@@ -569,6 +706,31 @@ def _pagina_google(ok: bool, mensaje: str) -> bytes:
 
 # =============================================================== micrófono continuo
 
+def es_interrupcion(oido: str, dicho: str) -> str | None:
+    """¿Lo que se ha oído mientras hablaba es alguien cortándola? None si no; si sí, lo que pidió después
+    («Athena, para, abre YouTube» → «abre YouTube»). El eco de su propia voz se reconoce por parecerse a lo que dice."""
+    t = normalizar(oido)
+    ws = re.findall(r"[a-zñ]+", t)
+    if not ws:
+        return None
+    palabras_dichas = set(re.findall(r"[a-zñ]+", normalizar(dicho)))
+    nombres = set(perfil.variantes()) - {"hola", "chiqui"}
+    primeras = " ".join(ws[:5])                        # la orden de cortar va al principio de lo que se dice
+    para = re.search(r"\b(callate|calla|para ya|para de hablar|basta|stop|silencio|vale ya|cierra el pico|dejalo ya)\b",
+                     primeras)
+    nombre = any(difflib.get_close_matches(w, list(nombres), n=1, cutoff=0.8) for w in ws[:4] if len(w) >= 4)
+    dichas = list(palabras_dichas)                     # el eco llega mal transcrito («necesito» por «necesites»)
+    eco = sum(w in palabras_dichas or bool(difflib.get_close_matches(w, dichas, n=1, cutoff=0.75))
+              for w in ws) / len(ws) > 0.5
+    if nombre and any(difflib.get_close_matches(w, list(nombres), n=1, cutoff=0.8) for w in palabras_dichas if len(w) >= 4):
+        nombre = False                                 # ella misma está diciendo su nombre («di Athena cuando…»)
+    if not ((para and not (eco and not re.search(r"\b(callate|calla|basta|stop)\b", t))) or (nombre and not eco)):
+        return None
+    resto = separar_nombre(oido)[1] if nombre else ""
+    resto = re.sub(r"(?i)^\W*(c[aá]llate|calla|para ya|para|basta|stop|espera)\b\W*", "", resto).strip()
+    return resto if len(resto.split()) >= 2 else ""
+
+
 class Microfono:
     """Un único proceso grabando todo el rato vía PipeWire; entrega bloques de 30 ms."""
 
@@ -581,6 +743,8 @@ class Microfono:
             sys.exit("No encuentro parec ni pw-record. Instala: sudo apt install pulseaudio-utils")
         self.cola: queue.Queue = queue.Queue(maxsize=400)   # ~12 s de margen
         self.mudo = threading.Event()
+        self.vigia = False                             # escuchar mientras habla (para que se la pueda cortar)
+        self.cola_vigia: queue.Queue = queue.Queue(maxsize=200)
         threading.Thread(target=self._bucle, daemon=True).start()
         log(f"micrófono continuo vía {self.cmd[0]}")
 
@@ -597,6 +761,13 @@ class Microfono:
                 while len(buf) >= n:
                     bloque, buf = bytes(buf[:n]), buf[n:]
                     if self.mudo.is_set():
+                        if self.vigia:                 # hablando: solo para detectar que la interrumpen
+                            if self.cola_vigia.full():
+                                try:
+                                    self.cola_vigia.get_nowait()
+                                except queue.Empty:
+                                    pass
+                            self.cola_vigia.put_nowait(np.frombuffer(bloque, dtype=np.int16).astype(np.float32) / 32768.0)
                         continue
                     if self.cola.full():
                         try:
@@ -794,10 +965,15 @@ class Voz:
         hablante = os.environ.get("JARVIS_VOZ_HABLANTE") or ajustes.get("hablante")
         self.hablante = int(hablante if hablante is not None else 1) if hablantes > 1 else None
         self.lentitud = float(os.environ.get("JARVIS_VOZ_LENTITUD") or ajustes.get("lentitud") or 1.05)
+        # naturalidad (Piper): «ruido» = variación de la entonación, «ritmo» = variación de la duración de cada sonido
+        self.ruido = ajustes.get("ruido")
+        self.ritmo = ajustes.get("ritmo")
+        self.acabado = bool(ajustes.get("acabado"))          # filtro que quita lo metálico y da algo de sala
         self.config = None
         try:
             from piper import SynthesisConfig
-            self.config = SynthesisConfig(speaker_id=self.hablante, length_scale=self.lentitud)
+            self.config = SynthesisConfig(speaker_id=self.hablante, length_scale=self.lentitud,
+                                          noise_scale=self.ruido, noise_w_scale=self.ritmo)
         except ImportError:
             pass
         log(f"voz: {ruta.name} (hablante {self.hablante}) · reproductor: {self.player[0]}")
@@ -811,6 +987,9 @@ class Voz:
                     self.voz.synthesize_wav(texto, w)
             else:
                 self.voz.synthesize(texto, w, speaker_id=self.hablante, length_scale=self.lentitud)
+        if self.acabado:
+            from voz_acabado import acabar_voz
+            acabar_voz(destino)
 
 
 # =============================================================== LLM (ollama)
@@ -853,6 +1032,14 @@ def esperar_ollama(ui: Interfaz) -> bool:
         log(f"IA local: falta el modelo {MODELO_LLM} (ollama pull {MODELO_LLM}); sigo sin ella")
         return False
     IA_LOCAL[0] = True
+    if RESERVA_OLLAMA != "30m":                     # con RAM de sobra, la reserva se carga ya (luego contesta sin esperar)
+        def precargar() -> None:
+            try:
+                ollama("/api/generate", {"model": MODELO_LLM, "keep_alive": RESERVA_OLLAMA}, timeout=180)
+                log(f"IA local: {MODELO_LLM} cargada y lista de reserva")
+            except (urllib.error.URLError, OSError) as e:
+                log(f"IA local: no he podido precargarla ({e})")
+        threading.Thread(target=precargar, daemon=True).start()
     return True
 
 
@@ -875,7 +1062,7 @@ def preguntar_llm(historial: list[dict], max_tokens: int = 140, extra: str = "",
         "model": MODELO_LLM,
         "messages": [{"role": "system", "content": sistema}] + historial[-MAX_TURNOS * 2:],
         "stream": False,
-        "keep_alive": "30m",          # la IA local es solo de reserva: libera 1,3 GB de RAM si no se usa
+        "keep_alive": RESERVA_OLLAMA,  # con 16 GB se queda cargada (sin 14 s de espera); con poca RAM, 30 min
         "options": {"num_ctx": 2048, "temperature": temperatura, "top_p": 0.9, "repeat_penalty": 1.15,
                     "num_predict": max_tokens},
     }
@@ -952,8 +1139,21 @@ def accion_local(texto: str, confirmar) -> str | None:
     if RE_FECHA.search(t):
         partes.append(f"Hoy es {DIAS[ahora.weekday()]}, {ahora.day} de {MESES[ahora.month - 1]}.")
     if RE_HORA.search(t):
-        partes.append(f"Son las {ahora.hour} y {ahora.minute:02d}.")
+        partes.append(hora_en_voz(ahora.hour, ahora.minute))
     return " ".join(partes) or None
+
+
+def hora_en_voz(h: int, m: int) -> str:
+    """Como se dice en España: «Son las doce y treinta y uno de la noche», «Es la una menos cuarto», «las seis en punto»."""
+    if m >= 40:                                        # «las ocho menos veinte»
+        h, resto = (h + 1) % 24, ("menos cuarto" if m == 45 else f"menos {60 - m}")
+    else:
+        resto = {0: "en punto", 15: "y cuarto", 30: "y media"}.get(m, f"y {m}")
+    h12 = h % 12 or 12
+    parte = ("de la noche" if h in (0, 21, 22, 23) else "de la madrugada" if h < 6 else "de la mañana" if h < 12
+             else "del mediodía" if h == 12
+             else "de la tarde" if h < 21 else "de la noche")
+    return f"{'Es la' if h12 == 1 else 'Son las'} {h12} {resto} {parte}."
 
 
 def bajar_volumen_wav(ruta: Path, factor: float) -> None:
@@ -993,6 +1193,8 @@ class Jarvis:
         self._ultimo_dialogo = 0.0
         self.herr = Herramientas(self.resumir, self.confirmar)
         self._voz_lock = threading.RLock()            # que un recordatorio no hable encima de otra frase
+        self._cortar = threading.Event()              # «Athena, calla»: corta lo que está diciendo
+        self._tras_interrupcion = ""                  # lo que pidió al interrumpirla («Athena, para, abre YouTube»)
         self.molestar = NoMolestar()                     # «no me molestes»: sin hablar por su cuenta
         self.sist = Sistema(self.decir, self.confirmar, self.ui, log)
         self._cerebro = threading.RLock()             # voz y Telegram no procesan órdenes a la vez
@@ -1023,6 +1225,8 @@ class Jarvis:
                                    mientras_habla=self._sordo_durante)
         self.ui.asistente = self.asistente
         self.ui.ordenar = self.ordenar_por_escrito
+        self.ui.decir_fn = lambda t: self._decir_respondiendo(t)
+        self.ui.callar_fn = self.callar
         self.correo = Correo(self.google, self.decir, self.confirmar, log, ui=self.ui, cerebro=self.cerebro,
                              resumir=self.resumir, avisar=self.tg.enviar,
                              es_telegram=lambda: getattr(self._canal, "tg", False))
@@ -1088,6 +1292,7 @@ class Jarvis:
                            enviar_documento=self.tg.enviar_documento,
                            es_telegram=lambda: getattr(self._canal, "tg", False))
         self.ui.nexus = self.nexus
+        self.tg.para_redes = self.nexus.desde_telegram      # foto/vídeo + «instagram», «todas», «xbox» → lo publica
         from voz_personaje import VozPersonaje             # «pon la voz de Asuka» / «pon tu voz de antes»
         self.voz_personaje = VozPersonaje(self, Voz, log)
         threading.Timer(90, self.nexus.recordar).start()   # una pregunta de Nexus sin contestar se repite al arrancar
@@ -1098,6 +1303,11 @@ class Jarvis:
             recien_encendido = True
         if recien_encendido:                            # (no una pestaña nueva en cada reinicio del asistente)
             threading.Timer(45, lambda: _abrir("http://127.0.0.1:8765/nexus")).start()
+
+            def _redes():                               # y sus redes, para ver lo que ha publicado
+                for i, u in enumerate(self.nexus.urls_perfiles()):
+                    threading.Timer(4 * i, lambda u=u: _abrir(u)).start()
+            threading.Timer(60, _redes).start()
         from visual import Visual                       # diagramas (Archify) y vídeos animados (HyperFrames)
         self.visual = Visual(self.cerebro, self.decir, log, avisar=self.tg.enviar,
                              enviar_documento=self.tg.enviar_documento,
@@ -1210,6 +1420,16 @@ class Jarvis:
                     pass
                 log("telegram: recibidas las credenciales de Google (no se guardan en el registro)")
                 return mensaje
+            from nexus_kaggle import es_llave, guardar_llave
+            if es_llave(datos):
+                usuario_k = guardar_llave(datos)
+                try:
+                    ruta.unlink()
+                except OSError:
+                    pass
+                log("telegram: recibida la llave de Kaggle (guardada en ~/.kaggle, no se escribe aquí)")
+                return (f"Llave de Kaggle guardada (cuenta {usuario_k}); he borrado la copia que llegó. Cada semana "
+                        "lanzo yo sola un lote de clips en su GPU gratis. Para probar ya: «nexus, lanza kaggle».")
         if es_foto:
             self.vision.recibida_por_telegram(ruta)
         self.ui.enviar(tipo="resultados", titulo="Recibido por Telegram", items=[ruta.name])
@@ -1279,6 +1499,9 @@ class Jarvis:
             log(f"omniroute: no he podido prepararlo: {e!r}")
 
     def _procesar_telegram(self, texto: str) -> dict:
+        if re.fullmatch(r"(?i)\W*(c[aá]llate|calla|para|para ya|silencio|basta|stop|shh+)\W*", texto or ""):
+            self.callar()                              # «calla» por Telegram: corta lo que esté diciendo
+            return {"texto": "Vale, me callo.", "susurro": None, "despues": None, "archivo": None, "origen": "voz"}
         try:
             aviso = self.omni.recibir_clave(texto)       # «clave de gemini AIza…»: a OmniRoute, nunca al registro
         except Exception as e:
@@ -1290,12 +1513,6 @@ class Jarvis:
             return {"texto": ("Eso es el secreto de tu cuenta de Google: no hace falta mandarlo como texto, ya lo "
                               "tengo del archivo. Borra ese mensaje del chat, por seguridad."),
                     "susurro": None, "despues": None, "archivo": None}
-        if RE_SECRETO.search(texto):                       # cualquier otra clave pegada: ni a la IA ni al registro
-            log("telegram: recibido un mensaje con una clave; no se manda a la IA")
-            return {"texto": ("Ese mensaje lleva una clave. No la mando a la IA ni la apunto. Si es para conectar un "
-                              "proveedor a OmniRoute, mándamela así: clave de gemini y la clave. Después borra el "
-                              "mensaje del chat, por seguridad."),
-                    "susurro": None, "despues": None, "archivo": None}
         m = re.search(r"(?i)\bpollinations\b\W*(?:token|clave|key)?\W*([A-Za-z0-9_\-\.]{12,})\s*$", texto.strip())
         if m:                                           # clave de Pollinations (imágenes): ni al registro ni a la IA
             guardar_config(pollinations_token=m.group(1))
@@ -1303,6 +1520,16 @@ class Jarvis:
             return {"texto": "Guardada la clave de Pollinations: las imágenes saldrán sin marca de agua y más deprisa. "
                              "Borra ese mensaje del chat, por seguridad.", "susurro": None, "despues": None,
                     "archivo": None}
+        m = re.search(r"(?i)\b(?:clave|key|token|api)\s+(?:de\s+)?(pexels|pixabay|coverr)\b\W*([A-Za-z0-9_\-]{16,})\s*$",
+                      texto.strip())
+        if m:                                           # metraje de stock para MoneyPrinterTurbo: ni al registro ni a la IA
+            from nexus_mpt import guardar_clave
+            servicio = m.group(1).lower()
+            guardar_clave(servicio, m.group(2))
+            log(f"telegram: recibida una clave de {servicio} (no se guarda en el registro)")
+            return {"texto": f"Guardada la clave de {servicio.capitalize()}: Asuka ya puede hacer vídeos narrados con "
+                             "metraje real. Borra tu mensaje con la clave, por seguridad.",
+                    "susurro": None, "despues": None, "archivo": None}
         m = re.search(r"(?i)\b(?:voz|voice)\s+(?:de\s+)?eleven\s*labs\W*([A-Za-z0-9]{18,24})\b", texto)
         if m:                                           # qué voz de ElevenLabs usa el personaje de Nexus
             guardar_clave_estudio("elevenlabs_voz", m.group(1))
@@ -1330,6 +1557,12 @@ class Jarvis:
             ok, mensaje = self.cerebro.guardar_clave(m.group(1))
             self.cerebro.al_cambiar()
             return {"texto": mensaje, "susurro": None, "despues": None, "archivo": None}
+        if RE_SECRETO.search(texto):                       # cualquier otra clave (las de arriba ya tienen su camino): ni a la IA ni al registro
+            log("telegram: recibido un mensaje con una clave; no se manda a la IA")
+            return {"texto": ("Ese mensaje lleva una clave. No la mando a la IA ni la apunto. Si es para conectar un "
+                              "proveedor a OmniRoute, mándamela así: clave de gemini y la clave. Después borra el "
+                              "mensaje del chat, por seguridad."),
+                    "susurro": None, "despues": None, "archivo": None}
         with self._cerebro:
             self._canal.tg = True
             try:
@@ -1368,7 +1601,7 @@ class Jarvis:
             except SinConexion:
                 pass
         cuerpo = {
-            "model": MODELO_LLM, "stream": False, "keep_alive": "30m",
+            "model": MODELO_LLM, "stream": False, "keep_alive": RESERVA_OLLAMA,
             "messages": [{"role": "system", "content": "Eres Jarvis. Respondes en español de España, breve, "
                                                        "sin listas ni símbolos, para leerse en voz alta."},
                          {"role": "user", "content": f"{instruccion}\n\n---\n{texto[:5000]}"}],
@@ -1405,7 +1638,7 @@ class Jarvis:
             except SinConexion:
                 pass
         cuerpo = {
-            "model": MODELO_LLM, "stream": False, "keep_alive": "30m",
+            "model": MODELO_LLM, "stream": False, "keep_alive": RESERVA_OLLAMA,
             "messages": [{"role": "system", "content":
                           "Eres Jarvis y redactas documentos en español de España, bien escritos y útiles. "
                           "Devuelve SOLO el documento: en la primera línea un título corto; después párrafos "
@@ -1450,28 +1683,101 @@ class Jarvis:
         if not self.voz:
             return
         if self.mic:
-            self.mic.mudo.set()                       # que no se escuche a sí mismo
+            self.mic.mudo.set()                       # que no se escuche a sí mismo…
+            self._cortar.clear()                      # …pero que se la pueda interrumpir («Athena», «calla», «para ya»)
+            if INTERRUMPIR and self.oyente:
+                while not self.mic.cola_vigia.empty():
+                    self.mic.cola_vigia.get_nowait()
+                self.mic.vigia = True
+                threading.Thread(target=self._vigilar_interrupcion, args=(texto,), daemon=True,
+                                 name="interrupcion").start()
+        sonando = None
+
+        def esperar(p) -> None:
+            while p.poll() is None:
+                if self._cortar.is_set():
+                    p.terminate()
+                    return
+                time.sleep(0.05)
         try:
             frases = [f for f in re.split(r"(?<=[.!?;:])\s+", texto) if f.strip()]
-            sonando = None
             for i, trozo in enumerate(frases):
+                if self._cortar.is_set():
+                    break
                 wav = TMP / f"frase_{i % 2}.wav"
                 self.voz.sintetizar(trozo, wav)
                 if susurro:
                     bajar_volumen_wav(wav, VOLUMEN_SUSURRO)
                 env = envolvente(wav)
                 if sonando:
-                    sonando.wait()
+                    esperar(sonando)
+                if self._cortar.is_set():
+                    break
                 self.ui.enviar(tipo="voz", env=env, paso=0.04)
                 sonando = subprocess.Popen(self.voz.player + [str(wav)],
                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if sonando:
-                sonando.wait()
+                esperar(sonando)
         finally:
             if self.mic:
+                self.mic.vigia = False
+                if self._cortar.is_set():
+                    log("interrumpida: me callo")
+                    self.ui.poner_estado("escuchando")
                 time.sleep(0.25)                      # el eco de la sala
                 self.mic.vaciar()
                 self.mic.mudo.clear()
+
+    def _decir_respondiendo(self, texto: str) -> None:
+        self._canal.respondiendo = True               # (hilo nuevo: que suene aunque esté en «no molestar»)
+        self.decir(texto)
+
+    def callar(self) -> None:
+        """Corta lo que esté diciendo (por voz, por la pantalla o por Telegram)."""
+        self._cortar.set()
+
+    def _vigilar_interrupcion(self, dicho: str) -> None:
+        """Mientras habla, escucha a ratos: si oye su nombre o «calla / para ya / basta / stop / espera», se calla.
+        Lo que oye de su propia voz (el eco del altavoz) se reconoce por parecerse a lo que está diciendo."""
+        palabras_dichas = set(re.findall(r"[a-zñ]+", normalizar(dicho)))
+        nombres = set(perfil.variantes())
+        trozos: list = []
+        con_voz = 0
+        ultimo = 0.0
+        while self.mic.vigia and not self._cortar.is_set():
+            try:
+                f = self.mic.cola_vigia.get(timeout=0.3)
+            except queue.Empty:
+                continue
+            nivel = float(np.sqrt(np.mean(f ** 2)))
+            trozos.append(f)
+            if nivel > self.oyente.umbral() * 1.5:
+                con_voz += 1
+            if len(trozos) < 80:                       # ventanas de ~2,4 s
+                continue
+            audio, voz_en_ventana = np.concatenate(trozos), con_voz
+            trozos, con_voz = trozos[-10:], 0           # (un poco de solape, para no partir «Athe-na»)
+            depurar = (Path.home() / ".cache/jarvis_vigia_debug").exists()
+            if depurar:
+                log(f"vigía: ventana con voz {voz_en_ventana}/80 (umbral {self.oyente.umbral() * 1.5:.4f})")
+            if voz_en_ventana < 12 or time.time() - ultimo < 1.0:
+                continue
+            ultimo = time.time()
+            try:
+                if self.cerebro.oido_activo:
+                    oido = self.cerebro.transcribir(audio, prompt="", modelo="whisper-large-v3-turbo")   # sin pista
+                else:
+                    oido = self.oido.transcribir(audio, silencioso=True)
+            except Exception:
+                continue
+            if depurar:
+                log(f"vigía oye: «{oido}»")
+            resto = es_interrupcion(oido or "", dicho)
+            if resto is not None:
+                log(f"interrupción: «{oido}»")
+                self._tras_interrupcion = resto
+                self._cortar.set()
+                return
 
     # ---------- permisos
     def confirmar(self, accion: str) -> bool:
@@ -1535,7 +1841,9 @@ class Jarvis:
                 r = nx.responder(entrada)
                 return {"texto": r.texto, "susurro": None, "despues": None, "archivo": None, "origen": "nexus"}
             except Exception as e:
-                log(f"error en nexus: {e!r}")
+                import traceback
+                donde = traceback.extract_tb(e.__traceback__)[-1]
+                log(f"error en nexus: {e!r} ({Path(donde.filename).name}:{donde.lineno} {donde.name})")
         if profundidad < 2:
             try:
                 reescrito = self.aprende.reescribir(entrada, self._ultima_entrada)
@@ -1883,6 +2191,14 @@ class Jarvis:
                 if r.get("archivo") and str(r["archivo"]).endswith(".jpg"):   # la foto de la cámara se ve en el portátil
                     from herramientas import lanzar
                     lanzar(["xdg-open", r["archivo"]])
+                if r.get("archivo") and Path(str(r["archivo"])).is_file() and re.search(
+                        r"(?i)\b(m[aá]nd|env[ií]|p[aá]s)\w*|\b(telegram|m[oó]vil)\b", entrada):
+                    a = str(r["archivo"])                 # «haz una captura y mándamela a Telegram» dicho en voz alta
+                    if a.lower().endswith((".png", ".jpg", ".jpeg")):
+                        self.tg.enviar_foto(a, Path(a).name)
+                    else:
+                        self.tg.enviar_documento(a, Path(a).name)
+                    r["texto"] = (r["texto"] or "").rstrip(". ") + ". Te la he mandado por Telegram."
                 self.decir(r["texto"], susurro=r["susurro"])
                 if r["despues"]:
                     r["despues"]()
@@ -1963,6 +2279,12 @@ class Jarvis:
                 en_conversacion_hasta = 0.0
                 continue
             self.responder(peticion)
+            if self._cortar.is_set():                 # la han cortado: lo que dijo al cortarla, o se queda escuchando
+                self._cortar.clear()
+                siguiente, self._tras_interrupcion = self._tras_interrupcion, ""
+                if siguiente:
+                    self.responder(siguiente)
+                    self._cortar.clear()
             en_conversacion_hasta = time.time() + SEGUIMIENTO if SEGUIMIENTO > 0 else 0.0
 
     def bucle_texto(self) -> None:

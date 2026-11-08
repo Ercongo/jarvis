@@ -102,6 +102,49 @@ def facebook_video(ruta: Path, texto: str, titulo: str = "") -> dict:
     return {"id": r.get("id"), "url": f"https://www.facebook.com/{m['page_id']}/videos/{r.get('id')}"}
 
 
+def _vale_para_reel(ruta: Path) -> bool:
+    """Facebook solo acepta como reel vídeos verticales de 3 a 90 segundos."""
+    import subprocess
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                            "stream=width,height:format=duration", "-of", "default=nw=1", str(ruta)],
+                           capture_output=True, text=True, timeout=30)
+        d = dict(x.split("=", 1) for x in r.stdout.split() if "=" in x)
+        return int(d["height"]) > int(d["width"]) and 3 <= float(d["duration"]) <= 90
+    except Exception:
+        return False
+
+
+def facebook_reel(ruta: Path, texto: str) -> dict:
+    """Reel de la página en tres pasos (empezar, subir el archivo, publicar): sale en la pestaña Reels y se reparte
+    mucho más que un vídeo normal."""
+    m = config()["meta"]
+    tok = m["page_token"]
+    base = f"{GRAPH}/{m['page_id']}/video_reels"
+    r = _http("POST", base, urllib.parse.urlencode({"upload_phase": "start", "access_token": tok}).encode())
+    vid = r.get("video_id")
+    if not vid:
+        raise ErrorRed("Facebook no ha abierto la subida del reel")
+    datos = ruta.read_bytes()
+    _http("POST", f"https://rupload.facebook.com/video-upload/v21.0/{vid}", datos,
+          {"Authorization": f"OAuth {tok}", "offset": "0", "file_size": str(len(datos)),
+           "Content-Type": "application/octet-stream"}, timeout=900)
+    _http("POST", base, urllib.parse.urlencode({"upload_phase": "finish", "video_id": vid, "video_state": "PUBLISHED",
+                                                "description": texto, "access_token": tok}).encode())
+    return {"id": vid, "url": f"https://www.facebook.com/reel/{vid}"}
+
+
+def facebook_movimiento(ruta: Path, texto: str, titulo: str = "") -> dict:
+    """Reel si el vídeo cumple (vertical, 3-90 s); si no, o si Facebook lo rechaza, vídeo normal."""
+    if _vale_para_reel(ruta):
+        try:
+            return facebook_reel(ruta, texto)
+        except ErrorRed as e:
+            if "sin conexión" in str(e):
+                raise
+    return facebook_video(ruta, texto, titulo)
+
+
 # ================================================================ Instagram
 def _ig_publicar(contenedor: str) -> dict:
     m = config()["meta"]
@@ -130,6 +173,160 @@ def instagram_foto(ruta: Path, texto: str) -> dict:
     c = _http("POST", f"{GRAPH}/{m['ig_id']}/media?" + urllib.parse.urlencode(
         {"image_url": url, "caption": texto[:2200], "access_token": tok}))
     return _ig_publicar(c["id"])
+
+
+def instagram_carrusel(rutas: list[Path], texto: str) -> dict:
+    """Varias fotos (2-10) en una sola publicación de Instagram, que se pasan con el dedo."""
+    m = config()["meta"]
+    tok = m["page_token"]
+    hijos = []
+    for r in rutas[:10]:
+        oculta = facebook_foto(r, "", publicada=False)
+        img = _http("GET", f"{GRAPH}/{oculta['id']}?fields=images&access_token={tok}")
+        url = max(img.get("images", []), key=lambda i: i.get("width", 0))["source"]
+        h = _http("POST", f"{GRAPH}/{m['ig_id']}/media?" + urllib.parse.urlencode(
+            {"image_url": url, "is_carousel_item": "true", "access_token": tok}))
+        hijos.append(h["id"])
+    c = _http("POST", f"{GRAPH}/{m['ig_id']}/media?" + urllib.parse.urlencode(
+        {"media_type": "CAROUSEL", "children": ",".join(hijos), "caption": texto[:2200], "access_token": tok}))
+    return _ig_publicar(c["id"])
+
+
+def instagram_historia(ruta: Path) -> dict:
+    """Una historia (24 h) con una foto o un vídeo vertical."""
+    m = config()["meta"]
+    tok = m["page_token"]
+    if ruta.suffix.lower() == ".mp4":
+        c = _http("POST", f"{GRAPH}/{m['ig_id']}/media?" + urllib.parse.urlencode(
+            {"media_type": "STORIES", "upload_type": "resumable", "access_token": tok}))
+        datos = ruta.read_bytes()
+        _http("POST", c["uri"], datos, {"Authorization": f"OAuth {tok}", "offset": "0", "file_size": str(len(datos))},
+              timeout=900)
+    else:
+        oculta = facebook_foto(ruta, "", publicada=False)
+        img = _http("GET", f"{GRAPH}/{oculta['id']}?fields=images&access_token={tok}")
+        url = max(img.get("images", []), key=lambda i: i.get("width", 0))["source"]
+        c = _http("POST", f"{GRAPH}/{m['ig_id']}/media?" + urllib.parse.urlencode(
+            {"image_url": url, "media_type": "STORIES", "access_token": tok}))
+    r = _ig_publicar(c["id"])
+    r["url"] = r.get("url") or "https://www.instagram.com/stories/"
+    return r
+
+
+def estadisticas() -> dict:
+    """Seguidores y publicaciones de la página de Facebook y de Instagram (para el panel)."""
+    c = config().get("meta", {})
+    if not c.get("page_token"):
+        return {}
+    tok, out = c["page_token"], {}
+    try:
+        f = _http("GET", f"{GRAPH}/{c['page_id']}?fields=followers_count,fan_count&access_token={tok}", timeout=20)
+        out["facebook"] = {"seguidores": f.get("followers_count", f.get("fan_count", 0))}
+        if c.get("ig_id"):
+            i = _http("GET", f"{GRAPH}/{c['ig_id']}?fields=followers_count,media_count&access_token={tok}", timeout=20)
+            out["instagram"] = {"seguidores": i.get("followers_count", 0), "publicaciones": i.get("media_count", 0)}
+    except ErrorRed:
+        pass
+    return out
+
+
+def instagram_comentarios(publicaciones: int = 12) -> list[dict]:
+    """Comentarios de sus últimas publicaciones de Instagram (leerlos va con el permiso que ya hay)."""
+    m = config().get("meta", {})
+    if not (m.get("page_token") and m.get("ig_id")):
+        return []
+    tok = m["page_token"]
+    r = _http("GET", f"{GRAPH}/{m['ig_id']}/media?" + urllib.parse.urlencode(
+        {"fields": "id,caption,permalink,comments_count,comments.limit(25){id,text,username,timestamp,replies{id}}",
+         "limit": publicaciones, "access_token": tok}), timeout=40)
+    propio = (m.get("ig_usuario") or "").lower()
+    out = []
+    for p in r.get("data", []):
+        for c in (p.get("comments") or {}).get("data", []):
+            if propio and (c.get("username") or "").lower() == propio:
+                continue
+            out.append({"id": c["id"], "video": (p.get("caption") or "")[:60], "autor": "@" + (c.get("username") or "?"),
+                        "texto": c.get("text", ""), "fecha": (c.get("timestamp") or "")[:16].replace("T", " "),
+                        "red": "instagram", "url": p.get("permalink", ""),
+                        "respuestas": len((c.get("replies") or {}).get("data", []))})
+    return out
+
+
+def instagram_responder(id_comentario: str, texto: str) -> dict:
+    """Responder necesita el permiso «instagram_manage_comments» (se marca al volver a conectar Meta)."""
+    tok = config()["meta"]["page_token"]
+    try:
+        return _http("POST", f"{GRAPH}/{id_comentario}/replies?" + urllib.parse.urlencode(
+            {"message": texto[:2000], "access_token": tok}), timeout=40)
+    except ErrorRed as e:
+        if "permission" in str(e).lower() or "(#10)" in str(e) or "(#200)" in str(e):
+            raise ErrorRed("a la conexión de Meta le falta el permiso de gestionar comentarios: copia la respuesta "
+                           "y contéstalo tú en Instagram, o vuelve a conectar Meta marcando «instagram_manage_comments»"
+                           ) from e
+        raise
+
+
+def facebook_comentarios(publicaciones: int = 10) -> list[dict]:
+    """Comentarios de la gente en sus últimas publicaciones de la página (pages_read_user_content)."""
+    m = config().get("meta", {})
+    if not m.get("page_token"):
+        return []
+    tok = m["page_token"]
+    r = _http("GET", f"{GRAPH}/{m['page_id']}/posts?" + urllib.parse.urlencode(
+        {"fields": "id,message,permalink_url,comments.limit(25){id,message,from,created_time,comment_count}",
+         "limit": publicaciones, "access_token": tok}), timeout=40)
+    out = []
+    for p in r.get("data", []):
+        for c in (p.get("comments") or {}).get("data", []):
+            if (c.get("from") or {}).get("id") == m["page_id"]:
+                continue                                  # los suyos no
+            out.append({"id": c["id"], "video": (p.get("message") or "")[:60],
+                        "autor": (c.get("from") or {}).get("name") or "alguien", "texto": c.get("message", ""),
+                        "fecha": (c.get("created_time") or "")[:16].replace("T", " "), "red": "facebook",
+                        "url": p.get("permalink_url", ""), "respuestas": c.get("comment_count", 0)})
+    return out
+
+
+def facebook_responder(id_comentario: str, texto: str) -> dict:
+    tok = config()["meta"]["page_token"]
+    return _http("POST", f"{GRAPH}/{id_comentario}/comments?" + urllib.parse.urlencode(
+        {"message": texto[:8000], "access_token": tok}), timeout=40)
+
+
+def instagram_publicaciones(n: int = 25) -> list[dict]:
+    m = config()["meta"]
+    r = _http("GET", f"{GRAPH}/{m['ig_id']}/media?" + urllib.parse.urlencode(
+        {"fields": "id,caption,media_type,media_product_type,timestamp,permalink,like_count,comments_count",
+         "limit": n, "access_token": m["page_token"]}), timeout=40)
+    return r.get("data", [])
+
+
+def instagram_borrar(id_publicacion: str) -> None:
+    """Borra una publicación suya de Instagram (instagram_manage_contents). No se puede deshacer."""
+    tok = config()["meta"]["page_token"]
+    _http("DELETE", f"{GRAPH}/{id_publicacion}?access_token={tok}", timeout=40)
+
+
+def rendimiento(n: int = 25) -> list[dict]:
+    """Cómo le ha ido a cada publicación de Instagram: alcance, vistas, guardados, compartidos, me gusta."""
+    tok = config()["meta"]["page_token"]
+    out = []
+    for p in instagram_publicaciones(n):
+        fila = {"id": p["id"], "texto": (p.get("caption") or "")[:120], "tipo": p.get("media_product_type") or
+                p.get("media_type"), "fecha": (p.get("timestamp") or "")[:16].replace("T", " "),
+                "hora": (p.get("timestamp") or "")[11:13], "url": p.get("permalink", ""),
+                "me_gusta": p.get("like_count", 0), "comentarios": p.get("comments_count", 0)}
+        for metricas in ("reach,views,saved,shares,total_interactions", "reach,saved,shares,total_interactions",
+                         "reach,saved"):
+            try:
+                r = _http("GET", f"{GRAPH}/{p['id']}/insights?metric={metricas}&access_token={tok}", timeout=30)
+                for x in r.get("data", []):
+                    fila[x["name"]] = (x.get("values") or [{}])[0].get("value", x.get("total_value", {}).get("value", 0))
+                break
+            except ErrorRed:
+                continue
+        out.append(fila)
+    return out
 
 
 def instagram_reel(ruta: Path, texto: str) -> dict:
@@ -179,12 +376,20 @@ def x_post(texto: str, foto: Path | None = None) -> dict:
 
 
 # ================================================================ una sola puerta
-def publicar(red: str, tipo: str, ruta: Path, texto: str, titulo: str = "") -> dict:
+def publicar(red: str, tipo: str, ruta: Path, texto: str, titulo: str = "", extra: list[Path] | None = None) -> dict:
     if red not in conectadas():
         raise ErrorRed(f"{red} sin conectar")
+    if tipo == "carrusel":
+        if red == "instagram":
+            return instagram_carrusel([ruta] + list(extra or []), texto)
+        if red == "facebook":
+            return facebook_foto(ruta, texto)            # en Facebook, la primera foto
+        raise ErrorRed(f"en {red} no hay carrusel")
     if red == "facebook":
-        return facebook_video(ruta, texto, titulo) if tipo == "video" else facebook_foto(ruta, texto)
+        return facebook_movimiento(ruta, texto, titulo) if tipo == "video" else facebook_foto(ruta, texto)
     if red == "instagram":
+        if tipo == "historia":
+            return instagram_historia(ruta)
         return instagram_reel(ruta, texto) if tipo == "video" else instagram_foto(ruta, texto)
     if red == "x":
         if tipo == "video":

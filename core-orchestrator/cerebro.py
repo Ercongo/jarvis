@@ -196,10 +196,12 @@ class Cerebro:
                       f"{self.modelo_voz or 'el oído local'}. Borra tu mensaje con la clave del chat, por seguridad.")
 
     # ---------- oído
-    def transcribir(self, audio: np.ndarray, pista: str = "") -> str:
+    def transcribir(self, audio: np.ndarray, pista: str = "", prompt: str | None = None,
+                    modelo: str | None = None) -> str:
         frontera = uuid.uuid4().hex
-        campos = {"model": self.modelo_voz, "language": "es", "temperature": "0", "response_format": "json",
-                  "prompt": (con_nombre("Conversación en español de España con Jarvis, un asistente personal. ")
+        campos = {"model": modelo or self.modelo_voz, "language": "es", "temperature": "0", "response_format": "json",
+                  "prompt": (prompt if prompt is not None else
+                             con_nombre("Conversación en español de España con Jarvis, un asistente personal. ")
                              + pista)[:800]}
         cuerpo = b"".join(f'--{frontera}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
                           for k, v in campos.items())
@@ -209,7 +211,7 @@ class Cerebro:
             r = self._peticion("/audio/transcriptions", cuerpo,
                                {"Content-Type": f"multipart/form-data; boundary={frontera}"}, timeout=12)
         except urllib.error.HTTPError as e:
-            if e.code == 429:
+            if e.code == 429 and not modelo:               # (el oído de interrumpir usa otro modelo y su propio cupo)
                 self._pausar(self.modelo_voz, e)
             raise SinConexion(f"HTTP {e.code}") from e
         texto = (r.get("text") or "").strip()
@@ -294,6 +296,18 @@ class Cerebro:
                         continue
                     if e.code == 401:
                         raise SinConexion("clave rechazada") from e
+                    if e.code == 413 and _ < 1:
+                        # petición más grande que el cupo por minuto del modelo (cuenta gratis): se recorta el texto
+                        # más largo (un README, una transcripción…) y la respuesta máxima, y se vuelve a probar
+                        m = re.search(r"Limit (\d+), Requested (\d+)", detalle)
+                        factor = min(0.85, int(m.group(1)) / int(m.group(2)) * 0.85) if m else 0.55
+                        largo = max(range(len(cuerpo["messages"])), key=lambda i: len(str(cuerpo["messages"][i].get("content", ""))))
+                        c = str(cuerpo["messages"][largo].get("content", ""))
+                        cuerpo["messages"] = [dict(x) for x in cuerpo["messages"]]
+                        cuerpo["messages"][largo]["content"] = c[: int(len(c) * factor)] + "\n[…recortado…]"
+                        cuerpo["max_completion_tokens"] = max(300, int(cuerpo["max_completion_tokens"] * factor))
+                        self.log(f"cerebro: {modelo} pide menos texto; lo recorto al {factor:.0%}")
+                        continue
                     ultimo = f"{modelo}: HTTP {e.code} {detalle[:120]}"
                     break
         raise SinConexion(ultimo)
@@ -336,12 +350,17 @@ class Cerebro:
         return leer_plan(bruto)
 
 
+ESTILO_COLOQUIAL = ("Habla coloquial y natural, como una amiga de confianza de España que le echa una mano: tutea, frases cortas, expresiones normales de aquí (oye, mira, venga, genial, qué tal, menudo, vaya, tal cual) sin abusar y sin repetir la misma, reacciona como una persona («uy», «anda», «qué bien») cuando pegue. Nada de formalismos de mayordomo ni de frases de manual («Por supuesto», «Con mucho gusto», «Lamento informarte», «¿En qué más puedo ayudarte?»). Si no sabes algo, dilo como lo diría cualquiera («ni idea, ¿lo busco?»).")
+
+
 def identidad() -> str:
     """Cómo es el asistente según el perfil: su género y cómo trata a la persona (llaves dobladas: va a .format)."""
     p = perfil()
     partes = []
     if str(p.get("genero", "")).lower().startswith("f"):
         partes.append("Eres una asistente: habla de ti en femenino (\"estoy lista\", \"encantada\").")
+    if (p.get("estilo") or "coloquial") == "coloquial":
+        partes.append(ESTILO_COLOQUIAL)
     usuario = p.get("usuario") or {}
     if usuario.get("nombre"):
         partes.append(f"La persona se llama {usuario['nombre']}.")
@@ -405,6 +424,12 @@ Si corrige o amplía algo que ya sabes, escribe el dato completo y actualizado; 
 únicamente si lo nombra), la cámara ("¿qué tengo en la mano?", "¿cómo voy vestido?") o la foto recién mandada por \
 Telegram. Para enseñar o abrir una foto/canción/vídeo/documento que ha hecho Jarvis NO es "ver": es una orden \
 ("enséñame la foto que has hecho", "reproduce la canción que has creado").
+- Capturas de pantalla («haz una captura», «mándame un pantallazo», «hazla y mándamela a Telegram») NO son "ver": \
+son la orden "haz una captura" (si pide mandarla, Jarvis la manda sola por Telegram).
+- Asuka (también la oye como Azuka, Azúcar o Asuca) es el personaje del proyecto Nexus: «abre el Instagram/Facebook/X/\
+YouTube/TikTok/Twitch de Asuka» es la orden "nexus, abre <red> de asuka"; «abre Nexus» o «la página de Asuka» es \
+"nexus, abre el panel"; sus usuarios y su correo los sabe Nexus: "nexus, cuál es el usuario de asuka en <red>". \
+Una web (https://…, algo.com) se abre con la orden "abre <dirección>".
 - {{"tipo":"orden","texto":"..."}} todo lo demás que hace el ordenador: archivos, Word, Excel, presentaciones, planos, \
 PDF, escanear (no es "ver"), imágenes, vídeos, canciones, búsquedas en internet, etc. Escribe la orden en español \
 claro con todos los datos, nombres de archivo tal cual, siguiendo estas formas: {ordenes}

@@ -601,7 +601,19 @@ def cerrar_ventanas(objetivo: str) -> tuple[int, str]:
         elegidas = [v for v in abiertas if all(encaja(v, g) for g in grupos)]
         if not elegidas and len(grupos) > 1:                    # si con todas no hay ninguna, la más concreta
             elegidas = [v for v in abiertas if encaja(v, grupos[-1])]
+    navegador = ("firefox", "chrom", "brave", "edge", "opera", "vivaldi", "epiphany")
+    pide_navegador = any(n in clave for n in ("firefox", "chrome", "chromium", "navegador", "brave"))
     for v in elegidas:
+        # una página web (YouTube, Facebook…) es una PESTAÑA: se cierra solo esa, no el navegador con todas las demás
+        if (any(n in v["clase"].lower() for n in navegador) and not pide_navegador and clave not in ("todo", "todas")
+                and shutil.which("xdotool")):
+            try:
+                subprocess.run(["wmctrl", "-i", "-a", v["id"]], timeout=3)
+                time.sleep(0.4)
+                subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+w"], timeout=3)
+                continue
+            except (OSError, subprocess.TimeoutExpired):
+                pass
         subprocess.run(["wmctrl", "-i", "-c", v["id"]], timeout=3)
     return len(elegidas), clave or "todo"
 
@@ -735,6 +747,14 @@ class Herramientas:
             if total == 1:                                # que diga qué ha cerrado («Hecho» a secas no lo confirma)
                 return Resultado(f"He cerrado {re.sub(r'^(el|la|los|las) (ventana|programa) (de )?', '', m.group(2))}.")
             return Resultado(f"He cerrado {total} ventanas.")
+
+        m = re.match(r"^(?:abre|abrir|abreme|ve a|entra en)\s+(?:la (?:pagina|web) )?((?:https?://)?(?:www\.)?"
+                     r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|es|net|org|tv|io|ai|app|dev|me|co)(?:/\S*)?)$",
+                     peticion.strip().lower())
+        if m:                                             # «abre https://www.facebook.com», «abre x.com/kamadoasuka»
+            url = m.group(1) if m.group(1).startswith("http") else "https://" + m.group(1)
+            abrir_web(url)
+            return Resultado(f"Te abro {re.sub(r'^https?://(www\.)?', '', url).rstrip('/')}.")
 
         m = RE_ABRIR_APP.match(t)
         if m:

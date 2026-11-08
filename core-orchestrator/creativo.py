@@ -494,7 +494,10 @@ class Creativo:
             try:
                 texto, archivos, abrir = trabajo()
             except Exception as e:
-                self.log(f"creativo: error {e!r}")
+                import traceback
+                donde = " ← ".join(f"{Path(f.filename).name}:{f.lineno} {f.name}"
+                                   for f in reversed(traceback.extract_tb(e.__traceback__)[-4:]))
+                self.log(f"creativo: error {e!r} en {donde}")
                 texto, archivos, abrir = (f"No he podido terminarlo: {e}" if isinstance(e, RuntimeError) else
                                           f"No he podido terminarlo ({type(e).__name__}). Prueba otra vez."), [], None
             finally:

@@ -471,6 +471,30 @@ class Extras:
         t = normalizar(peticion)
         t = re.sub(r"^(por favor|oye|venga)\s+", "", t)
 
+        # --- la bóveda de Obsidian (~/jarvis/boveda)
+        if re.search(r"\b(obsidian|boveda)\b", t):
+            import boveda
+            m = (re.search(r"(?i)\b(?:apunta|anota|escribe|guarda|añade|anade|mete)\w*\s+(?:en|a)\s+(?:el |la |mi )?"
+                           r"(?:obsidian|b[oó]veda)\s*[:,]?\s*(.+)$", peticion.strip())
+                 or re.search(r"(?i)^\s*(?:apunta|anota|escribe|guarda|añade|anade|mete)\w*\s+(.+?)\s+(?:en|a)\s+"
+                              r"(?:el |la |mi )?(?:obsidian|b[oó]veda)\s*[.!]?$", peticion.strip()))
+            if m and len(m.group(1).strip()) > 2:
+                ruta = boveda.apuntar(m.group(1))
+                return Respuesta(f"Apuntado en tu diario de Obsidian ({ruta.stem}).")
+            if re.search(r"\b(actualiza|exporta|pon al dia|refresca|rehaz|genera)\w*\b", t):
+                def _hilo():
+                    try:
+                        r = boveda.exportar()
+                    except Exception as ex:
+                        r = f"No he podido poner al día la bóveda: {str(ex)[:150]}"
+                    if self.avisar:
+                        self.avisar(r)
+                threading.Thread(target=_hilo, daemon=True, name="boveda").start()
+                return Respuesta("Pongo al día la bóveda de Obsidian; te aviso por Telegram cuando acabe.")
+            return Respuesta("La bóveda de Obsidian está en la carpeta jarvis/boveda del portátil: Inicio, las "
+                             "publicaciones de Asuka con sus estadísticas, su diario, el material y lo que he aprendido. "
+                             "Dime «actualiza obsidian» para rehacerla o «apunta en obsidian…» para tu diario.")
+
         # --- estado del ordenador
         if re.search(r"\b(como|que tal) (va|esta|anda)\w* (el |mi )?(ordenador|portatil|equipo|pc|sistema)\b"
                      r"|\bestado del (ordenador|portatil|equipo|sistema)\b|\buso de (la )?(cpu|memoria|procesador)\b"
@@ -575,7 +599,7 @@ class Extras:
             return Respuesta("Escrito.")
 
         # --- captura de pantalla
-        if re.search(r"\b(haz|hazme|saca|sacame|toma)\w*\s+(una\s+)?(captura|foto de (la )?pantalla|pantallazo)"
+        if re.search(r"\b(haz|hazme|saca|sacame|toma|manda|mandame|envia|enviame|pasa|pasame)\w*\s+(una\s+|un\s+)?(captura|foto de (la )?pantalla|pantallazo)"
                      r"|^captura\w*( la)? pantalla|^captura$", t):
             carpeta = carpeta_usuario("PICTURES")
             carpeta.mkdir(parents=True, exist_ok=True)
@@ -592,7 +616,7 @@ class Extras:
                         break
             if not ok:
                 return Respuesta("No he podido hacer la captura. Falta el programa scrot.")
-            return Respuesta(f"Captura guardada en {carpeta.name}.", archivo=str(ruta))
+            return Respuesta(f"Captura hecha (guardada en {carpeta.name}).", archivo=str(ruta))
 
         # --- noticias
         if re.search(r"\bnoticias\b|\btitulares\b|\bque (hay de nuevo|pasa en el mundo|ha pasado hoy)\b", t):

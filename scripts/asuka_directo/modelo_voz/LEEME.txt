@@ -1,0 +1,1 @@
+﻿Aquí van asuka.pth y asuka.index (salen del cuaderno de Kaggle).

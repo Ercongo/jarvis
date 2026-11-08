@@ -97,23 +97,31 @@ def main():
     lista = frases()
     hechas = {l.split("|", 1)[0] for l in META.read_text(encoding="utf-8").splitlines()} if META.exists() else set()
     cv, se_asuka = conversor()
+    # Piper una sola vez para todas las frases que faltan (cargar el modelo en cada frase costaba 10 s)
+    BRUTO = D / "piper"
+    BRUTO.mkdir(exist_ok=True)
+    faltan = [(i, f) for i, f in enumerate(lista) if f"asuka_{i:04d}.wav" not in hechas
+              and not (BRUTO / f"{i:04d}.wav").exists()]
+    if faltan:
+        (D / "faltan.json").write_text(json.dumps(faltan, ensure_ascii=False), encoding="utf-8")
+        subprocess.run([JPY, "-c", (
+            "import sys, json, wave\nfrom piper import PiperVoice, SynthesisConfig\n"
+            "v = PiperVoice.load(sys.argv[1]); c = SynthesisConfig(speaker_id=1, length_scale=1.0)\n"
+            "for i, f in json.load(open(sys.argv[2])):\n"
+            "    with wave.open(f'{sys.argv[3]}/{i:04d}.wav', 'wb') as w:\n"
+            "        v.synthesize_wav(f, w, syn_config=c)"),
+            str(MODELO), str(D / "faltan.json"), str(BRUTO)], check=True)
+        log("piper: hechas", len(faltan), "frases")
     se_origen = None
     for i, f in enumerate(lista):
         nombre = f"asuka_{i:04d}.wav"
         if nombre in hechas:
             continue
-        tmp = Path(f"/tmp/vozasuka_{i}.wav")
-        subprocess.run([JPY, "-c", (
-            "import sys, wave\nfrom piper import PiperVoice, SynthesisConfig\n"
-            "v = PiperVoice.load(sys.argv[1])\n"
-            "with wave.open(sys.argv[2], 'wb') as w:\n"
-            "    v.synthesize_wav(sys.argv[3], w, syn_config=SynthesisConfig(speaker_id=0, length_scale=1.0))"),
-            str(MODELO), str(tmp), f], check=True)
+        tmp = BRUTO / f"{i:04d}.wav"
         if se_origen is None:
             se_origen = cv.extract_se([str(tmp)])
         t = time.time()
         cv.convert(audio_src_path=str(tmp), src_se=se_origen, tgt_se=se_asuka, output_path=str(W / nombre), tau=0.3)
-        tmp.unlink(missing_ok=True)
         with open(META, "a", encoding="utf-8") as m:
             m.write(f"{nombre}|{f}\n")
         log(f"{i + 1}/{len(lista)} ({time.time() - t:.0f} s)")

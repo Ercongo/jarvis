@@ -141,6 +141,9 @@ VOCATIVOS = {"oye", "hola", "eh", "ey", "hey", "buenas", "bueno", "venga", "vale
              "buenos", "dias", "tardes", "noches", "días", "porfa", "por", "favor", "y", "a", "ver"}
 
 
+PALABRAS_CORRIENTES = {"hola", "chiqui", "oye", "eh"}
+
+
 def separar_nombre(texto: str) -> tuple[bool, str]:
     """¿Empieza la frase llamando al asistente por su nombre? Devuelve (llamado, resto de la frase)."""
     palabras = texto.split()
@@ -164,6 +167,11 @@ def separar_nombre(texto: str) -> tuple[bool, str]:
         if estricto and i > 0 and not all(NO_LETRAS.sub("", q.lower()) in VOCATIVOS for q in palabras[:i]):
             break
         if len(limpia) >= 3 and difflib.get_close_matches(limpia, lista, n=1, cutoff=corte):
+            # una palabra corriente como «hola» (o «chiqui») despierta solo en frases cortas: si no, cualquiera
+            # que diga «hola cariño, ya estoy en casa…» en la habitación (o en un audio) la hace contestar
+            cerca = difflib.get_close_matches(limpia, lista, n=1, cutoff=corte)[0]
+            if cerca in PALABRAS_CORRIENTES and len(palabras) > 6:
+                return False, ""
             return True, " ".join(palabras[i + 1:]).strip(" ,.;:¿?¡!")
     return False, ""
 

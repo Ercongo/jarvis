@@ -87,8 +87,11 @@ def recomendar(e: Equipo | None = None) -> dict:
     e = e or detectar()
     ram = e.ram_gb
     r: dict = {
-        "whisper_local": "tiny" if ram < 4 else "base" if ram < 12 else "small",
-        "ia_local": None if ram < 4 else "qwen2.5:1.5b" if ram < 10 else "qwen2.5:3b" if ram < 20 else "qwen2.5:7b",
+        # La RAM decide si cabe; la CPU, si va rápido. Medido el 8 nov 2026 en un A10-5745M sin AVX2 con 16 GB:
+        # whisper small, 3 veces más lento que base (15 s frente a 5 s por frase); qwen3:4b, 1,2 tokens/s frente a 3,8
+        # de qwen3:1.7b. Sin AVX2, más RAM no compensa un modelo más grande.
+        "whisper_local": "tiny" if ram < 4 else "base" if ram < 12 or not e.avx2 else "small",
+        "ia_local": None if ram < 4 else "qwen3:1.7b" if ram < 10 or not e.avx2 else "qwen3:4b" if ram < 20 else "qwen3:8b",
         "efectos_interfaz": "bajos" if ram < 6 or e.nucleos <= 2 or sin_aceleracion(e) else "normales",
         "musica_ia_local": ram >= 16 and e.nucleos >= 8,
         "voz_clonada": "lenta" if not e.nvidia else "rapida",

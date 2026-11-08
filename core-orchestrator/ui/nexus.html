@@ -2,443 +2,564 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04070d">
+<link rel="manifest" href="/nexus/manifest.json">
+<link rel="apple-touch-icon" href="/nexus/icono.png">
 <title>Asuka · Nexus</title>
 <style>
   @font-face { font-family: "Orbitron"; font-weight: 700; src: url(/fuentes/orbitron-latin-700-normal.woff2) format("woff2"); }
   @font-face { font-family: "Rajdhani"; font-weight: 500; src: url(/fuentes/rajdhani-latin-500-normal.woff2) format("woff2"); }
   @font-face { font-family: "Rajdhani"; font-weight: 600; src: url(/fuentes/rajdhani-latin-600-normal.woff2) format("woff2"); }
-  :root { --fondo:#04070d; --panel:#0a1220; --linea:#1b2a44; --tinta:#dcecf5; --tenue:#7d93ad; --rojo:#ff3b5c;
-          --cian:#38e8ff; --oro:#ffc04a; --ok:#5dffb0; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--fondo); color:var(--tinta); font:500 16px/1.5 Rajdhani, Ubuntu, sans-serif; }
-  header { padding:22px 28px 14px; border-bottom:1px solid var(--linea); display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
-  header img { width:84px; height:84px; border-radius:50%; object-fit:cover; border:2px solid var(--rojo); }
-  h1 { font:700 26px Orbitron, sans-serif; letter-spacing:.18em; margin:0; color:#fff; }
-  .usu { color:var(--cian); font-size:17px; }
-  .aviso { display:inline-block; margin-top:4px; padding:2px 10px; border:1px solid var(--oro); color:var(--oro); font-size:13px; }
-  main { padding:20px 28px 60px; display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:18px; }
-  section { background:var(--panel); border:1px solid var(--linea); padding:16px 18px; }
-  h2 { font:700 12px Orbitron, sans-serif; letter-spacing:.25em; color:var(--cian); margin:0 0 12px; text-transform:uppercase; }
-  .pasos { list-style:none; margin:0; padding:0; }
-  .pasos li { padding:6px 0; border-bottom:1px solid var(--linea); display:flex; gap:10px; align-items:center; }
-  .pasos li::before { content:"○"; color:var(--tenue); width:16px; }
-  .pasos li.ok::before { content:"✔"; color:var(--ok); }
-  .pasos li.ahora { color:#fff; font-weight:600; }
-  .pasos li.ahora::before { content:"▶"; color:var(--rojo); }
-  .pregunta { margin-top:12px; padding:10px 12px; border-left:3px solid var(--rojo); background:rgba(255,59,92,.07); }
-  .bio { margin-bottom:12px; }
-  .bio b { color:var(--cian); font-weight:600; letter-spacing:.05em; }
-  .bio small { color:var(--tenue); margin-left:6px; }
-  .bio p { margin:4px 0; white-space:pre-wrap; background:#060c16; padding:8px 10px; border:1px solid var(--linea); }
-  button { background:transparent; color:var(--cian); border:1px solid var(--cian); padding:3px 10px; font:600 13px Rajdhani; cursor:pointer; }
-  button:hover { background:rgba(56,232,255,.12); }
-  .rejilla { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
-  .rejilla img { width:100%; aspect-ratio:1; object-fit:cover; border:1px solid var(--linea); }
-  .rejilla figure { margin:0; text-align:center; color:var(--tenue); font-size:13px; }
-  table { width:100%; border-collapse:collapse; }
-  td { padding:6px 4px; border-bottom:1px solid var(--linea); }
-  .estado { color:var(--tenue); } .estado.creada { color:var(--ok); }
-  video { width:100%; max-height:520px; background:#000; }
-  .video { margin-bottom:16px; }
+  :root { --fondo:#04070d; --panel:#0a1220; --panel2:#060c16; --linea:#1b2a44; --tinta:#dcecf5; --tenue:#7d93ad;
+          --rojo:#ff3b5c; --cian:#38e8ff; --oro:#ffc04a; --ok:#5dffb0; --barra:60px; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--fondo); color:var(--tinta); font:500 16px/1.45 Rajdhani, system-ui, sans-serif;
+         padding-bottom:calc(var(--barra) + env(safe-area-inset-bottom) + 12px); }
+  a { color:var(--cian); }
+  button, .boton { background:transparent; color:var(--cian); border:1px solid var(--cian); padding:8px 12px; min-height:38px;
+    font:600 15px Rajdhani, system-ui; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px;
+    border-radius:6px; }
+  button:active, .boton:active { background:rgba(56,232,255,.18); }
+  button:disabled { opacity:.45; }
+  button.ok { color:var(--ok); border-color:var(--ok); } button.mal { color:var(--rojo); border-color:var(--rojo); }
+  button.oro { color:var(--oro); border-color:var(--oro); }
+  button.lleno { background:var(--cian); color:#001018; }
+  /* cabecera */
+  header { position:sticky; top:0; z-index:20; background:rgba(4,7,13,.94); backdrop-filter:blur(6px);
+           border-bottom:1px solid var(--linea); padding:10px 14px calc(8px); padding-top:calc(10px + env(safe-area-inset-top)); }
+  .cab { display:flex; align-items:center; gap:12px; }
+  .cab img { width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--rojo); flex:none; }
+  .cab .txt { flex:1; min-width:0; }
+  h1 { font:700 17px Orbitron, sans-serif; letter-spacing:.14em; margin:0; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .usu { color:var(--tenue); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #refrescar { width:44px; height:44px; padding:0; justify-content:center; font-size:20px; border-radius:50%; flex:none; }
+  #refrescar.gira { animation:gira 1s linear infinite; }
+  @keyframes gira { to { transform:rotate(360deg); } }
+  .estado { font-size:13px; color:var(--tenue); margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .chip { border:1px solid var(--linea); padding:1px 8px; border-radius:12px; font-size:13px; white-space:nowrap; }
+  .chip.ocupado { color:var(--oro); border-color:var(--oro); } .chip.bien { color:var(--ok); border-color:var(--ok); }
+  .rapidas { display:flex; gap:8px; overflow-x:auto; padding:10px 14px 2px; scrollbar-width:none; }
+  .rapidas::-webkit-scrollbar { display:none; }
+  .rapidas button { flex:none; font-size:14px; padding:6px 12px; min-height:34px; border-radius:18px; }
+  .pregunta { margin:10px 14px 0; padding:10px 12px; border-left:3px solid var(--rojo); background:rgba(255,59,92,.08); }
+  .pregunta .fila { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .pregunta input { flex:1; min-width:140px; background:var(--panel2); color:var(--tinta); border:1px solid var(--linea);
+    padding:8px; font:500 15px Rajdhani, system-ui; border-radius:6px; }
+  /* pestañas */
+  nav { position:fixed; left:0; right:0; bottom:0; z-index:30; display:flex; background:rgba(6,12,22,.97);
+        border-top:1px solid var(--linea); padding-bottom:env(safe-area-inset-bottom); }
+  nav button { flex:1; border:0; border-radius:0; flex-direction:column; gap:0; font-size:12px; min-height:var(--barra);
+               color:var(--tenue); padding:6px 2px; position:relative; }
+  nav button b { font-size:20px; line-height:1.1; }
+  nav button.sel { color:var(--cian); box-shadow:inset 0 2px 0 var(--cian); }
+  nav .globo { position:absolute; top:6px; right:calc(50% - 22px); background:var(--rojo); color:#fff; font:600 11px system-ui;
+               border-radius:9px; padding:0 5px; min-width:16px; }
+  main { padding:12px 14px; max-width:1100px; margin:0 auto; }
+  .vista { display:none; } .vista.sel { display:block; }
+  h2 { font:700 12px Orbitron, sans-serif; letter-spacing:.2em; color:var(--cian); margin:18px 0 10px; text-transform:uppercase; }
+  h2:first-child { margin-top:4px; }
   .vacio { color:var(--tenue); }
-  dl { margin:0; } dt { color:var(--cian); margin-top:8px; } dd { margin:2px 0 0 0; color:var(--tinta); }
-  .ocupado { color:var(--oro); }
-  section.ancha { grid-column:1 / -1; }
-  .cola { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px; }
-  .item { border:1px solid var(--linea); background:#060c16; padding:10px; display:flex; flex-direction:column; gap:6px; }
-  .item.publicado { opacity:.55; } .item.descartado { display:none; }
-  .item img, .item video { width:100%; aspect-ratio:4/5; object-fit:cover; display:block; }
-  .item .red { font:700 12px Orbitron, sans-serif; letter-spacing:.15em; color:var(--cian); }
-  .item textarea, .com textarea { width:100%; min-height:90px; background:#03060b; color:var(--tinta);
-    border:1px solid var(--linea); font:500 15px Rajdhani; padding:6px; resize:vertical; }
-  .item .botones, .com .botones { display:flex; flex-wrap:wrap; gap:6px; }
-  .com { border-bottom:1px solid var(--linea); padding:8px 0; } .com b { color:var(--cian); }
-  .ok-txt { color:var(--ok); } .err-txt { color:var(--rojo); }
-  .portadas { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:14px; }
-  .portadas figure { margin:0; } .portadas img { width:100%; border:1px solid var(--linea); display:block; }
-  .portadas figcaption { font-size:14px; color:var(--tenue); margin-top:4px; }
-  .portadas figcaption b { color:var(--tinta); } .portadas a.boton { display:inline-block; margin:4px 0; }
-  td a { color:var(--tinta); text-decoration:none; border-bottom:1px dotted var(--cian); }
-  td a:hover { color:var(--cian); }
-  a.boton { color:var(--cian); border:1px solid var(--cian); padding:3px 10px; font:600 13px Rajdhani; text-decoration:none; }
-  td button, td a.boton { margin-left:4px; }
-  .barra { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
-  .correo { display:grid; grid-template-columns:minmax(260px, 1fr) 2fr; gap:14px; }
-  @media (max-width:800px) { .correo { grid-template-columns:1fr; } }
-  #correo-lista { list-style:none; margin:0; padding:0; max-height:520px; overflow:auto; }
-  #correo-lista li { padding:8px 6px; border-bottom:1px solid var(--linea); cursor:pointer; }
-  #correo-lista li:hover, #correo-lista li.sel { background:rgba(56,232,255,.08); }
-  #correo-lista li.nuevo b { color:#fff; } #correo-lista li small { color:var(--tenue); display:block; }
-  #correo-leer { white-space:pre-wrap; max-height:520px; overflow:auto; background:#060c16; border:1px solid var(--linea); padding:12px; }
-  #correo-leer h3 { margin:0 0 4px; font:600 18px Rajdhani; color:#fff; white-space:normal; }
-  #diario { max-height:520px; overflow:auto; }
-  .ev { display:grid; grid-template-columns:150px 90px 1fr; gap:10px; padding:6px 0; border-bottom:1px solid var(--linea); }
-  .ev time { color:var(--tenue); font-size:14px; } .ev b { font-size:13px; letter-spacing:.08em; }
-  .ev.tu b { color:var(--cian); } .ev.athena b { color:var(--rojo); } .ev.video b, .ev.material b { color:var(--ok); }
-  .ev video, .ev img { max-width:220px; max-height:300px; display:block; margin-top:6px; }
-  .pub { border-bottom:1px solid var(--linea); padding:10px 0; } .pub ul { margin:6px 0 0; padding-left:18px; }
-  .galeria { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:8px; }
-  .galeria a { color:var(--tenue); font-size:12px; text-decoration:none; overflow:hidden; }
-  .galeria img, .galeria video { width:100%; aspect-ratio:9/16; object-fit:cover; border:1px solid var(--linea); display:block; }
-  .galeria .wav { padding:8px; border:1px solid var(--linea); }
-  .refs { display:grid; grid-template-columns:repeat(auto-fill, minmax(78px, 1fr)); gap:6px; }
-  .refs figure { margin:0; position:relative; }
-  .refs img { width:100%; aspect-ratio:3/4; object-fit:cover; border:2px solid var(--linea); display:block; }
+  .peq { font-size:14px; }
+  /* tarjetas de publicación */
+  .cola { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:12px; }
+  .item { border:1px solid var(--linea); background:var(--panel); border-radius:10px; overflow:hidden; display:flex; flex-direction:column;
+          transition:opacity .3s, transform .3s; }
+  .item.fuera { opacity:0; transform:scale(.96); }
+  .item .media { position:relative; background:#000; aspect-ratio:4/5; cursor:pointer; }
+  .item .media img { width:100%; height:100%; object-fit:cover; display:block; }
+  .item .media .tipo { position:absolute; left:8px; top:8px; background:rgba(0,0,0,.72); padding:2px 8px; border-radius:10px; font-size:13px; }
+  .item .media .play { position:absolute; inset:0; display:grid; place-items:center; font-size:46px; color:rgba(255,255,255,.85);
+                       text-shadow:0 0 12px #000; pointer-events:none; }
+  .item .cuerpo { padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .item .red { font:700 12px Orbitron, sans-serif; letter-spacing:.12em; color:var(--cian); display:flex; justify-content:space-between; gap:8px; }
+  .item .red span { color:var(--tenue); font:500 14px Rajdhani, system-ui; letter-spacing:0; }
+  details > summary { cursor:pointer; color:var(--tenue); list-style:none; padding:4px 0; }
+  details > summary::before { content:"▸ "; } details[open] > summary::before { content:"▾ "; }
+  textarea { width:100%; min-height:110px; background:#03060b; color:var(--tinta); border:1px solid var(--linea); border-radius:6px;
+             font:500 15px Rajdhani, system-ui; padding:8px; resize:vertical; }
+  .botones { display:flex; flex-wrap:wrap; gap:6px; }
+  .err-txt { color:var(--rojo); font-size:14px; } .ok-txt { color:var(--ok); }
+  .hecho-hoy { display:flex; gap:8px; flex-wrap:wrap; }
+  .hecho-hoy a, .hecho-hoy span { font-size:14px; border:1px solid var(--linea); border-radius:14px; padding:2px 10px; color:var(--ok); text-decoration:none; }
+  .caja { background:var(--panel); border:1px solid var(--linea); border-radius:10px; padding:12px; }
+  .mejores li { margin:4px 0; }
+  /* comentarios */
+  .com { border-bottom:1px solid var(--linea); padding:10px 0; } .com b { color:var(--cian); }
+  .com .botones { margin-top:6px; }
+  /* material */
+  .filtros { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  .filtros button { min-height:32px; padding:4px 12px; border-radius:16px; font-size:14px; color:var(--tenue); border-color:var(--linea); }
+  .filtros button.sel { color:var(--cian); border-color:var(--cian); }
+  .refs { display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:6px; }
+  .refs figure { margin:0; position:relative; cursor:pointer; }
+  .refs img { width:100%; aspect-ratio:3/4; object-fit:cover; border:2px solid var(--linea); display:block; border-radius:6px; background:#000; }
   .refs figure.publica img { border-color:var(--ok); } .refs figure.revisar img { border-color:var(--oro); }
-  .refs figure.no img { border-color:var(--rojo); opacity:.35; }
-  .refs figcaption { position:absolute; left:3px; top:2px; font-size:12px; background:rgba(0,0,0,.7); padding:0 4px; }
-  #clips video { width:48%; max-height:260px; margin:8px 1% 0 0; }
+  .refs figure.no img { border-color:var(--rojo); opacity:.5; }
+  .refs figcaption { position:absolute; left:4px; top:3px; font-size:12px; background:rgba(0,0,0,.7); padding:0 4px; border-radius:4px; }
+  .refs figure .nueva { position:absolute; right:4px; top:3px; background:var(--rojo); color:#fff; font-size:11px; padding:0 4px; border-radius:4px; }
+  .roto { width:100%; aspect-ratio:3/4; display:grid; place-items:center; background:#0d1626; color:var(--tenue); font-size:12px;
+          text-align:center; border-radius:6px; padding:4px; word-break:break-all; }
+  .clips { display:grid; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:6px; }
+  .clips figure { margin:0; position:relative; cursor:pointer; }
+  .clips img { width:100%; aspect-ratio:9/16; object-fit:cover; display:block; border-radius:6px; border:1px solid var(--linea); background:#000; }
+  .clips figure::after { content:"▶"; position:absolute; inset:0; display:grid; place-items:center; font-size:28px; color:rgba(255,255,255,.8); pointer-events:none; }
+  .clips figcaption { font-size:12px; color:var(--tenue); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* vídeos y diario */
+  .videos { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+  .videos figure { margin:0; cursor:pointer; position:relative; }
+  .videos img { width:100%; aspect-ratio:9/16; object-fit:cover; border-radius:8px; border:1px solid var(--linea); display:block; background:#000; }
+  .videos figure::after { content:"▶"; position:absolute; left:0; right:0; top:0; aspect-ratio:9/16; display:grid; place-items:center;
+                          font-size:34px; color:rgba(255,255,255,.8); pointer-events:none; }
+  .videos figcaption { font-size:13px; margin-top:4px; }
+  .ev { display:grid; grid-template-columns:56px 1fr; gap:10px; padding:8px 0; border-bottom:1px solid var(--linea); }
+  .ev time { color:var(--tenue); font-size:13px; } .ev b { font-size:12px; letter-spacing:.08em; display:block; }
+  .ev.tu b { color:var(--cian); } .ev.athena b { color:var(--rojo); } .ev.video b, .ev.material b, .ev.publicado b { color:var(--ok); }
+  .ev img { max-width:120px; border-radius:6px; margin-top:6px; display:block; cursor:pointer; }
+  .ev .dia { grid-column:1 / -1; color:var(--oro); font:700 11px Orbitron, sans-serif; letter-spacing:.15em; padding-top:8px; }
+  /* más */
+  .mas details { background:var(--panel); border:1px solid var(--linea); border-radius:10px; padding:10px 12px; margin-bottom:10px; }
+  .mas details > summary { color:var(--cian); font:700 12px Orbitron, sans-serif; letter-spacing:.15em; text-transform:uppercase; }
+  table { width:100%; border-collapse:collapse; } td { padding:6px 4px; border-bottom:1px solid var(--linea); }
+  .portadas { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; }
+  .portadas img { width:100%; border-radius:6px; border:1px solid var(--linea); display:block; }
+  .galeria { display:grid; grid-template-columns:repeat(auto-fill, minmax(90px, 1fr)); gap:6px; }
+  .galeria img { width:100%; aspect-ratio:9/16; object-fit:cover; border-radius:4px; display:block; background:#000; }
+  .galeria a { font-size:11px; color:var(--tenue); text-decoration:none; overflow:hidden; word-break:break-all; }
+  #correo-lista { list-style:none; margin:0; padding:0; max-height:420px; overflow:auto; }
+  #correo-lista li { padding:8px 4px; border-bottom:1px solid var(--linea); cursor:pointer; }
+  #correo-lista li.nuevo b { color:#fff; } #correo-lista li small { color:var(--tenue); display:block; }
+  #correo-leer { white-space:pre-wrap; max-height:420px; overflow:auto; background:var(--panel2); border:1px solid var(--linea); padding:10px; margin-top:8px; }
+  dl { margin:0; } dt { color:var(--cian); margin-top:8px; } dd { margin:2px 0 0 0; }
+  .pasos { list-style:none; margin:0; padding:0; } .pasos li { padding:4px 0; } .pasos li.ok { color:var(--tenue); text-decoration:line-through; }
+  /* visor y avisos */
+  #visor { position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.94); display:none; flex-direction:column; }
+  #visor.abierto { display:flex; }
+  #visor .arriba { display:flex; justify-content:space-between; align-items:center; padding:calc(10px + env(safe-area-inset-top)) 12px 10px; gap:8px; }
+  #visor .arriba span { color:var(--tenue); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #visor .centro { flex:1; display:grid; place-items:center; min-height:0; padding:0 8px; }
+  #visor img, #visor video { max-width:100%; max-height:100%; object-fit:contain; }
+  #visor .abajo { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:10px 12px calc(14px + env(safe-area-inset-bottom)); }
+  #aviso { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(var(--barra) + 16px + env(safe-area-inset-bottom));
+           z-index:60; background:#0f1b2e; border:1px solid var(--cian); color:var(--tinta); padding:10px 14px; border-radius:8px;
+           display:none; gap:12px; align-items:center; max-width:92vw; box-shadow:0 6px 24px rgba(0,0,0,.6); }
+  #aviso.ver { display:flex; }
+  #aviso button { min-height:30px; padding:2px 10px; }
+  @media (max-width:600px) {          /* en el móvil, tarjetas compactas: miniatura a la izquierda */
+    .item { flex-direction:row; }
+    .item .media { width:34%; flex:none; aspect-ratio:auto; min-height:150px; }
+    .item .cuerpo { flex:1; min-width:0; padding:8px; }
+    .item .botones button, .item .botones .boton { padding:6px 9px; min-height:34px; font-size:14px; }
+    details > summary { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  }
+  @media (min-width:900px) {
+    nav { position:sticky; top:auto; bottom:auto; } body { padding-bottom:20px; }
+    nav { position:static; justify-content:center; background:transparent; border-top:0; border-bottom:1px solid var(--linea); }
+    nav button { flex:none; min-width:120px; flex-direction:row; gap:6px; font-size:15px; min-height:46px; }
+    nav button b { font-size:17px; } nav .globo { position:static; }
+    #aviso { bottom:24px; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <img id="foto" alt="" hidden>
-  <div>
-    <h1 id="nombre">NEXUS</h1>
-    <div class="usu" id="usuario">Personaje sin nombre todavía</div>
-    <div class="aviso" id="aviso" hidden></div>
+  <div class="cab">
+    <img id="foto" alt="" hidden>
+    <div class="txt"><h1 id="nombre">NEXUS</h1><div class="usu" id="usuario"></div></div>
+    <button id="refrescar" title="Actualizar (comentarios, estadísticas, todo)">⟳</button>
   </div>
+  <div class="estado" id="estado"></div>
 </header>
+<div id="pregunta"></div>
+<div class="rapidas" id="rapidas">
+  <button data-que="fotos">📷 Fotos nuevas</button>
+  <button data-que="clip">🎞 Clip con movimiento</button>
+  <button data-que="narrado">🎙 Vídeo narrado</button>
+  <button data-que="hedra">🗣 Hablando (Hedra)</button>
+  <button data-que="plan">📅 Plan de hoy</button>
+  <button data-que="comentarios">💬 Leer comentarios</button>
+  <button data-que="estadisticas">📊 Estadísticas</button>
+</div>
+<nav id="pestanas">
+  <button data-v="hoy" class="sel"><b>⌂</b>Hoy<span class="globo" id="g-hoy" hidden></span></button>
+  <button data-v="coms"><b>💬</b>Comentarios<span class="globo" id="g-coms" hidden></span></button>
+  <button data-v="material"><b>▦</b>Material</button>
+  <button data-v="videos"><b>▶</b>Vídeos</button>
+  <button data-v="diario"><b>☰</b>Diario</button>
+  <button data-v="mas"><b>⋯</b>Más</button>
+</nav>
 <main>
-  <section class="ancha"><h2>Hoy toca publicar</h2>
-    <div class="barra"><span id="cola-estado" class="vacio"></span>
-      <button id="plan-nuevo">Preparar el plan de hoy</button></div>
-    <div class="cola" id="cola"></div></section>
-  <section><h2>YouTube de Asuka</h2><div id="yt"></div></section>
-  <section><h2>Comentarios</h2><div id="coms" class="vacio">Cuando YouTube esté conectado, aquí salen los comentarios
-    con la respuesta que propone Asuka (la cambias si quieres y pulsas «Enviar»).</div></section>
-  <section><h2>Progreso</h2><ul class="pasos" id="pasos"></ul><div id="pregunta"></div></section>
-  <section><h2>Biografías por red</h2><div id="bios" class="vacio">Aún no están hechas.</div></section>
-  <section><h2>Cuentas</h2><table id="cuentas"></table><p class="vacio" style="font-size:14px">Pincha en una cuenta para
-    abrirla. Las que faltan las creas tú con «Crear» (tu móvil y tu contraseña) y luego pulsas «Ya la tengo».</p></section>
-  <section class="ancha"><h2>Foto de perfil y portadas</h2>
-    <p class="vacio" style="font-size:14px;margin-top:0">Descarga cada una y súbela en su red (las redes no dejan cambiarla
-      desde fuera hasta que esté la conexión oficial). Para rehacerlas: «nexus, haz las portadas».</p>
-    <div class="portadas" id="portadas"></div></section>
-  <section class="ancha"><h2>Correo de Asuka</h2>
-    <div class="barra"><span id="correo-estado" class="vacio">Cargando…</span>
-      <a class="boton" href="https://mail.google.com/" target="_blank" rel="noopener">Abrir Gmail</a>
-      <button id="correo-recargar">Actualizar</button></div>
-    <div class="correo"><ul id="correo-lista"></ul><article id="correo-leer" class="vacio">Pincha en un correo para leerlo.</article></div>
+  <section class="vista sel" id="v-hoy">
+    <h2>Por publicar</h2>
+    <div id="cola-estado" class="vacio peq"></div>
+    <div class="cola" id="cola"></div>
+    <h2>Hecho hoy</h2><div class="hecho-hoy" id="hechos-hoy"><span class="vacio">Nada todavía.</span></div>
+    <h2>Lo que mejor funciona</h2><div class="caja"><div id="stats" class="peq vacio"></div><ol class="mejores peq" id="mejores"></ol></div>
   </section>
-  <section><h2>Retratos</h2><div class="rejilla" id="retratos"></div></section>
-  <section><h2>Material del personaje</h2>
-    <p class="vacio" style="font-size:14px;margin-top:0" id="mezcla">Verde, ámbar y rojo: la mezcla con que salen en los
-      vídeos se cambia con «nexus, mezcla 60 35 5».</p>
-    <div class="refs" id="refs"></div><div id="clips"></div></section>
-  <section><h2>Vídeos</h2><div id="videos" class="vacio">Todavía no hay vídeos.</div></section>
-  <section><h2>Biblia del personaje</h2><dl id="biblia" class="vacio">Aún no está hecha.</dl></section>
-  <section class="ancha"><h2>Diario de Asuka</h2>
-    <p class="vacio" style="font-size:14px;margin-top:0">Todo lo que ha pasado: lo que pregunta Athena, lo que contestas,
-      vídeos, clips y publicaciones. Lo más reciente arriba.</p>
-    <div id="diario" class="vacio">Todavía no hay nada apuntado.</div></section>
-  <section class="ancha"><h2>Publicado y comentarios</h2>
-    <div id="publicado" class="vacio">Aún no se ha publicado nada. Cuando las redes estén conectadas (paso «Publicación
-      automática»), aquí salen cada publicación y sus comentarios.</div></section>
-  <section class="ancha"><h2>Todos los archivos</h2><div class="galeria" id="archivos"></div></section>
-  <section><h2>Plan semanal</h2><div id="calendario" class="vacio">Se hace en el último paso.</div></section>
+  <section class="vista" id="v-coms"><h2>Comentarios</h2><div id="coms" class="vacio">Sin comentarios por contestar.</div>
+    <details style="margin-top:12px"><summary>Ya contestados</summary><div id="coms-hechos"></div></details></section>
+  <section class="vista" id="v-material">
+    <div id="pedidas"></div>
+    <h2>Fotos de Asuka</h2>
+    <div class="filtros" id="filtros"><button data-f="todas" class="sel">Todas</button><button data-f="nuevas">Nuevas</button>
+      <button data-f="publica">Verdes</button><button data-f="revisar">Ámbar</button><button data-f="no">Rojas</button></div>
+    <p class="vacio peq" id="mezcla"></p>
+    <div class="refs" id="refs"></div>
+    <h2>Clips con movimiento</h2><div class="clips" id="clips"></div>
+  </section>
+  <section class="vista" id="v-videos"><h2>Vídeos</h2><div class="videos" id="videos"><span class="vacio">Todavía no hay vídeos.</span></div></section>
+  <section class="vista" id="v-diario"><h2>Diario</h2><div id="diario" class="vacio">Todavía no hay nada apuntado.</div></section>
+  <section class="vista mas" id="v-mas">
+    <h2>Más</h2>
+    <details id="d-progreso" hidden><summary>Pasos del proyecto</summary><ul class="pasos" id="pasos"></ul></details>
+    <details><summary>YouTube</summary><div id="yt"></div></details>
+    <details><summary>Cuentas</summary><table id="cuentas"></table></details>
+    <details><summary>Correo de Asuka</summary>
+      <div class="botones"><a class="boton" href="https://mail.google.com/" target="_blank" rel="noopener">Abrir Gmail</a>
+        <button id="correo-recargar">Actualizar</button></div>
+      <p id="correo-estado" class="vacio peq">Cargando…</p><ul id="correo-lista"></ul><article id="correo-leer" hidden></article></details>
+    <details><summary>Foto de perfil y portadas</summary><div class="portadas" id="portadas"></div></details>
+    <details><summary>Biblia del personaje</summary><dl id="biblia" class="vacio">Aún no está hecha.</dl></details>
+    <details><summary>Plan semanal</summary><dl id="calendario" class="vacio">Sin plan semanal.</dl></details>
+    <details id="d-archivos"><summary>Todos los archivos</summary>
+      <div class="botones" style="margin:8px 0"><a class="boton" href="/nexus/zip?que=fotos">⬇ Fotos (zip)</a>
+        <a class="boton" href="/nexus/zip?que=videos">⬇ Vídeos (zip)</a><a class="boton" href="/nexus/zip?que=todo">⬇ Todo (zip)</a></div>
+      <div class="galeria" id="archivos"></div></details>
+  </section>
 </main>
+<div id="visor"><div class="arriba"><span id="visor-tit"></span><button id="visor-cerrar">✕ Cerrar</button></div>
+  <div class="centro" id="visor-centro"></div><div class="abajo" id="visor-botones"></div></div>
+<div id="aviso"><span id="aviso-txt"></span><button id="aviso-boton" hidden>Deshacer</button></div>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
 const el = (tag, txt, cls) => { const e = document.createElement(tag); if (txt != null) e.textContent = txt; if (cls) e.className = cls; return e; };
-const archivo = (r) => "/nexus/archivo/" + encodeURIComponent(r).replace(/%2F/g, "/");
-const rel = (ruta) => { const i = ruta.indexOf("/nexus/"); return i >= 0 ? ruta.slice(i + 7) : ruta; };
-function copiar(txt, b) {
-  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(
-    () => { b.textContent = "Copiado"; setTimeout(() => b.textContent = "Copiar", 1500); },
-    () => { const t = el("textarea"); t.value = txt; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); b.textContent = "Copiado"; });
+const cod = (r) => encodeURIComponent(r).replace(/%2F/g, "/");
+const archivo = (r) => "/nexus/archivo/" + cod(r);
+const mini = (r, w) => "/nexus/mini/" + cod(r) + "?w=" + (w || 360);
+const rel = (ruta) => { const i = (ruta || "").indexOf("/nexus/"); return i >= 0 ? ruta.slice(i + 7) : ruta; };
+const esVideo = (r) => /\.(mp4|mov|webm)$/i.test(r || "");
+const NOMBRE_RED = { tiktok:"TikTok", instagram:"Instagram", facebook:"Facebook", youtube:"YouTube", x:"X", twitch:"Twitch", pinterest:"Pinterest" };
+let D = {}, ultimo = "", filtro = "todas";
+
+// miniatura con plan B: si no hay miniatura, el nombre del archivo (antes salía un hueco)
+function imagen(r, w, alt) {
+  const i = el("img"); i.loading = "lazy"; i.decoding = "async"; i.alt = alt || ""; i.src = mini(r, w);
+  i.onerror = () => { const x = el("div", "sin vista previa · " + (r || "").split("/").pop(), "roto"); i.replaceWith(x); };
+  return i;
 }
+function aviso(txt, deshacer) {
+  $("aviso-txt").textContent = txt; const b = $("aviso-boton");
+  b.hidden = !deshacer; b.onclick = async () => { $("aviso").classList.remove("ver"); if (deshacer) await deshacer(); };
+  $("aviso").classList.add("ver"); clearTimeout(aviso.t); aviso.t = setTimeout(() => $("aviso").classList.remove("ver"), deshacer ? 7000 : 3500);
+}
+function copiar(txt, b) {
+  const listo = () => { const o = b.textContent; b.textContent = "Copiado ✓"; setTimeout(() => b.textContent = o, 1500); };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(txt).then(listo);
+  else { const t = el("textarea"); t.value = txt; t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); listo(); }
+}
+function visor(titulo, ruta, botones) {
+  $("visor-tit").textContent = titulo || ""; const c = $("visor-centro"); c.textContent = "";
+  if (esVideo(ruta)) { const v = el("video"); v.src = archivo(ruta); v.controls = true; v.autoplay = true; v.playsInline = true; c.appendChild(v); }
+  else { const i = el("img"); i.src = archivo(ruta); c.appendChild(i); }
+  const b = $("visor-botones"); b.textContent = "";
+  (botones || []).forEach(x => b.appendChild(x));
+  const dl = el("a", "⬇ Descargar", "boton"); dl.href = archivo(ruta) + "?descargar=1"; dl.download = ruta.split("/").pop(); b.appendChild(dl);
+  $("visor").classList.add("abierto");
+}
+function cerrarVisor() { const c = $("visor-centro"); c.querySelectorAll("video").forEach(v => v.pause()); c.textContent = ""; $("visor").classList.remove("abierto"); }
+$("visor-cerrar").onclick = cerrarVisor;
+$("visor").addEventListener("click", (e) => { if (e.target.id === "visor-centro") cerrarVisor(); });
+
+async function accion(datos, silencio) {
+  try {
+    const r = await (await fetch("/nexus/accion", { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" },
+      body: JSON.stringify(datos) })).json();
+    if (!r.ok && !silencio) aviso("No se ha podido: " + (r.error || "error"));
+    ultimo = ""; cargar(); return r;
+  } catch (e) { aviso("Athena no responde ahora mismo (¿reiniciándose?)."); return { ok: false }; }
+}
+
+// ---------------- pintar
 function pintar(d) {
-  const id = d.id || {};
+  D = d; const id = d.id || {};
   $("nombre").textContent = id.nombre || "NEXUS";
-  $("usuario").textContent = id.usuario ? "@" + id.usuario + (id.correo ? " · " + id.correo : "") : "Personaje sin nombre todavía";
-  if (id.aviso_ia) { $("aviso").hidden = false; $("aviso").textContent = id.aviso_ia; }
-  if (d.perfil) { $("foto").hidden = false; $("foto").src = archivo("perfil.jpg") + "?t=" + Date.now(); }
-  // progreso
-  const ul = $("pasos"); ul.textContent = "";
-  for (const p of d.orden) {
-    const li = el("li", d.titulos[p]);
-    if (d.hechos.includes(p)) li.className = "ok"; else if (p === d.paso) li.className = "ahora";
-    ul.appendChild(li);
-  }
+  $("usuario").textContent = id.usuario ? "@" + id.usuario : "";
+  if (d.perfil) { $("foto").hidden = false; if (!$("foto").src) $("foto").src = archivo("perfil.jpg"); }
+  // estado
+  const es = $("estado"); es.textContent = "";
+  es.appendChild(d.ocupado ? el("span", "⚙ Trabajando: " + d.ocupado + "…", "chip ocupado") : el("span", "● Al día", "chip bien"));
+  const con = (d.conectadas || []).map(r => NOMBRE_RED[r] || r);
+  es.appendChild(el("span", "Publica sola en: " + (con.join(", ") || "ninguna"), "chip"));
+  if (d.prompts_pendientes) es.appendChild(el("span", "📷 " + d.prompts_pendientes + " fotos pedidas en cola", "chip"));
+  if (d.refrescado) es.appendChild(el("span", "⟳ " + d.refrescado, "chip"));
+  // pregunta (se contesta aquí mismo)
   const pq = $("pregunta"); pq.textContent = "";
-  if (d.ocupado) pq.appendChild(el("div", "Trabajando: " + d.ocupado + "…", "pregunta ocupado"));
-  else if (d.pregunta) pq.appendChild(el("div", (d.pregunta.texto ? d.pregunta.texto + "  — " : "") + "Contésteselo al asistente (en voz o por Telegram).", "pregunta"));
-  // bios
-  if (id.bios) {
-    const c = $("bios"); c.textContent = ""; c.className = "";
-    const nombres = Object.assign({}, d.redes, { email_firma: "Firma de correo" });
-    for (const [k, v] of Object.entries(id.bios)) {
-      const caja = el("div", null, "bio");
-      const t = el("b", nombres[k] || k); caja.appendChild(t); caja.appendChild(el("small", v.length + " caracteres"));
-      caja.appendChild(el("p", v));
-      const b = el("button", "Copiar"); b.onclick = () => copiar(v, b); caja.appendChild(b);
-      c.appendChild(caja);
-    }
+  if (d.pregunta && d.pregunta.texto && !d.ocupado) {
+    const c = el("div", null, "pregunta"); c.appendChild(el("div", "❓ " + d.pregunta.texto));
+    const f = el("div", null, "fila");
+    const enviar = (t) => { if (t) accion({ tipo: "contestar", texto: t }).then(r => r.ok && aviso("Respuesta enviada.")); };
+    const si = el("button", "Sí", "ok"); si.onclick = () => enviar("sí"); const no = el("button", "No", "mal"); no.onclick = () => enviar("no");
+    const inp = el("input"); inp.placeholder = "u otra respuesta…"; inp.onkeydown = (e) => { if (e.key === "Enter") enviar(inp.value.trim()); };
+    const ir = el("button", "Enviar"); ir.onclick = () => enviar(inp.value.trim());
+    f.append(si, no, inp, ir); c.appendChild(f); pq.appendChild(c);
   }
-  // cuentas
-  const tb = $("cuentas"); tb.textContent = "";
-  for (const [k, n] of Object.entries(d.redes)) {
-    const cu = (d.cuentas || {})[k] || {};
-    const en = (d.enlaces || {})[k] || {};
-    const tr = el("tr");
-    const creada = cu.estado === "creada" && cu.usuario;
-    const enlace = (txt, url) => { const a = el("a", txt); a.href = url; a.target = "_blank"; a.rel = "noopener"; return a; };
-    const td1 = el("td"); td1.appendChild(creada ? enlace(n, en.perfil.replace("{u}", cu.usuario)) : el("span", n)); tr.appendChild(td1);
-    const td2 = el("td"); td2.appendChild(creada ? enlace("@" + cu.usuario, en.perfil.replace("{u}", cu.usuario)) : el("span", "—")); tr.appendChild(td2);
-    const td3 = el("td");
-    if (creada) td3.appendChild(el("span", "creada", "estado creada"));
-    else {
-      const c = enlace("Crear", en.alta); c.className = "boton"; td3.appendChild(c);
-      const b = el("button", "Ya la tengo");
-      b.onclick = async () => {
-        const u = prompt("Usuario que te ha quedado en " + n + " (sin @):", (d.id || {}).usuario || "");
-        if (!u) return;
-        await fetch("/nexus/cuenta", { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" },
-                                       body: JSON.stringify({ red: k, usuario: u }) });
-        ultimo = ""; cargar();
-      };
-      td3.appendChild(b);
-    }
-    tr.appendChild(td3);
-    tb.appendChild(tr);
-  }
-  // retratos
-  const rj = $("retratos"); rj.textContent = "";
-  (d.retratos || []).forEach((r) => {
-    const f = el("figure"); const i = el("img"); i.src = archivo("retratos/" + r) + "?t=" + Date.now(); i.alt = r;
-    f.appendChild(i); f.appendChild(el("figcaption", r.replace(".jpg", "").replace("candidata", "Candidata "))); rj.appendChild(f);
-  });
-  if (!rj.childNodes.length) rj.appendChild(el("p", "Aún no hay retratos.", "vacio"));
-  // hoy toca
+  pintarHoy(d); pintarComs(d); pintarMaterial(d); pintarVideos(d); pintarDiario(d); pintarMas(d);
+}
+
+function pintarHoy(d) {
+  const hoy = new Date().toLocaleDateString("sv");
+  const pend = (d.cola || []).filter(c => c.estado === "pendiente")
+    .sort((a, b) => (a.dia + (a.hora || "")).localeCompare(b.dia + (b.hora || "")));
+  $("g-hoy").hidden = !pend.length; $("g-hoy").textContent = pend.length;
+  $("cola-estado").textContent = pend.length ? pend.length + " por publicar. Las que publica sola salen a su hora; las demás: Abrir red → pegar → «Hecho»."
+    : "Nada pendiente. Pulsa «📅 Plan de hoy» si quieres preparar más.";
   const co = $("cola"); co.textContent = "";
-  const cola = d.cola || [];
-  const pend = cola.filter(c => c.estado === "pendiente").length;
-  const con = (d.conectadas || []).map(r => (d.redes || {})[r] || r);
-  $("cola-estado").textContent = (cola.length ? pend + " por publicar · " + (cola.length - pend) + " hechas hoy" : "Todavía no hay plan para hoy.")
-    + " · Publica sola en: " + (con.length ? con.join(", ") + (d.auto_publicar ? " (a su hora)" : " (desactivado)") : "ninguna red conectada todavía");
-  for (const c of cola) {
-    const it = el("div", null, "item " + c.estado);
-    it.appendChild(el("div", ((d.redes || {})[c.red] || c.red) + (c.hora ? " · " + c.hora : "") + (c.tipo === "video" ? " · vídeo" : ""), "red"));
-    const m = c.tipo === "video" ? el("video") : el("img");
-    m.src = archivo(c.archivo); if (c.tipo === "video") { m.controls = true; m.preload = "none"; } else m.loading = "lazy";
-    it.appendChild(m);
-    if (c.titulo) it.appendChild(el("b", c.titulo));
-    const ta = el("textarea"); ta.value = c.texto; it.appendChild(ta);
+  for (const c of pend) {
+    const it = el("div", null, "item");
+    const md = el("div", null, "media");
+    md.appendChild(imagen(c.archivo, 480));
+    md.appendChild(el("span", c.tipo === "video" ? "vídeo" : c.tipo === "carrusel" ? "carrusel · " + (1 + (c.extra || []).length) : c.tipo === "historia" ? "historia" : "foto", "tipo"));
+    if (c.tipo === "video") md.appendChild(el("div", "▶", "play"));
+    md.onclick = () => visor((NOMBRE_RED[c.red] || c.red) + " · " + (c.titulo || ""), c.archivo);
+    it.appendChild(md);
+    const cu = el("div", null, "cuerpo");
+    const cab = el("div", (NOMBRE_RED[c.red] || c.red).toUpperCase(), "red");
+    cab.appendChild(el("span", (c.dia !== hoy ? c.dia.slice(8) + "/" + c.dia.slice(5, 7) + " · " : "hoy · ") + (c.hora || "")));
+    cu.appendChild(cab);
+    if (c.titulo) cu.appendChild(el("b", c.titulo));
+    const det = el("details"); det.appendChild(el("summary", (c.texto || "").slice(0, 70) + ((c.texto || "").length > 70 ? "…" : "")));
+    const ta = el("textarea"); ta.value = c.texto || ""; det.appendChild(ta); cu.appendChild(det);
+    if (c.error) cu.appendChild(el("div", "⚠ " + c.error, "err-txt"));
     const bs = el("div", null, "botones");
-    const bc = el("button", "Copiar texto"); bc.onclick = () => copiar(ta.value, bc); bs.appendChild(bc);
-    const bd = el("a", "Descargar"); bd.className = "boton"; bd.href = archivo(c.archivo); bd.download = c.archivo.split("/").pop(); bs.appendChild(bd);
-    const sub = (d.subida || {})[c.red];
-    if (sub) { const a = el("a", "Abrir " + ((d.redes || {})[c.red] || c.red)); a.className = "boton"; a.href = sub; a.target = "_blank"; a.rel = "noopener"; bs.appendChild(a); }
-    if (c.estado === "pendiente") {
+    if (c.publicando) { const b = el("button", "Publicando…"); b.disabled = true; bs.appendChild(b); }
+    else {
       if ((d.conectadas || []).includes(c.red)) {
-        const bp = el("button", "Publicar ya");
-        bp.onclick = async () => { bp.textContent = "Publicando…"; bp.disabled = true; await accion({ tipo: "publicar", id: c.id, texto: ta.value }); };
+        const bp = el("button", "🚀 Publicar ya", "lleno");
+        bp.onclick = async () => { bp.disabled = true; bp.textContent = "Publicando…"; const r = await accion({ tipo: "publicar", id: c.id, texto: ta.value }); if (r.ok) aviso("Publicado en " + (NOMBRE_RED[c.red] || c.red) + "."); };
         bs.appendChild(bp);
       }
-      const bh = el("button", "Hecho");
-      bh.onclick = () => { const u = prompt("Enlace de la publicación (si lo tienes; si no, deja vacío):", ""); if (u !== null) accion({ tipo: "hecho", id: c.id, url: u }); };
+      const bc = el("button", "Copiar texto"); bc.onclick = () => copiar(ta.value, bc); bs.appendChild(bc);
+      const sub = (d.subida || {})[c.red];
+      if (sub) { const a = el("a", "Abrir " + (NOMBRE_RED[c.red] || c.red), "boton"); a.href = sub; a.target = "_blank"; a.rel = "noopener"; bs.appendChild(a); }
+      const bh = el("button", "✔ Hecho", "ok");
+      bh.onclick = async () => {
+        it.classList.add("fuera");
+        const r = await accion({ tipo: "hecho", id: c.id });
+        if (r.ok) aviso("Marcada como hecha.", () => accion({ tipo: "deshacer", id: c.id }));
+      };
       bs.appendChild(bh);
-      const bx = el("button", "Descartar"); bx.onclick = () => accion({ tipo: "descartar", id: c.id }); bs.appendChild(bx);
-    } else if (c.url) { const a = el("a", "Ver publicación"); a.href = c.url; a.target = "_blank"; a.className = "boton"; bs.appendChild(a); }
-    if (c.error) it.appendChild(el("div", "No se pudo publicar: " + c.error, "err-txt"));
-    it.appendChild(bs); co.appendChild(it);
-  }
-  // youtube
-  const yt = $("yt"); yt.textContent = "";
-  const y = d.youtube || {};
-  if (y.conectado) {
-    const ca = y.canal || {};
-    const a = el("a", ca.titulo || "Canal"); a.href = ca.url || "#"; a.target = "_blank"; a.style.color = "var(--cian)";
-    yt.appendChild(a);
-    yt.appendChild(el("div", (ca.suscriptores || 0) + " suscriptores · " + (ca.videos || 0) + " vídeos · " + (ca.vistas || 0) + " visualizaciones", "vacio"));
-    const bp = el("button", "Personalizar canal (descripción y banner)"); bp.onclick = () => { bp.textContent = "Haciendo…"; orden("nexus personaliza los perfiles"); };
-    yt.appendChild(bp);
-  } else {
-    yt.appendChild(el("p", "Sin conectar. Conectado, Asuka cambia ella misma el banner y la descripción, sube los Shorts y lee los comentarios.", "vacio"));
-    const a = el("a", "Conectar YouTube de Asuka"); a.className = "boton"; a.href = "/nexus/youtube/conectar"; a.target = "_blank"; yt.appendChild(a);
-  }
-  // comentarios
-  const cs = d.comentarios || [];
-  if (cs.length) {
-    const cc = $("coms"); cc.textContent = ""; cc.className = "";
-    for (const c of cs.slice().reverse()) {
-      const b = el("div", null, "com");
-      b.appendChild(el("b", c.autor)); b.appendChild(el("span", " · " + c.fecha, "vacio"));
-      b.appendChild(el("div", c.texto));
-      if (c.respondido) b.appendChild(el("div", "Respondido: " + c.respondido, "ok-txt"));
-      else if (c.propuesta !== undefined) {
-        const ta = el("textarea"); ta.value = c.propuesta || ""; ta.placeholder = "Sin respuesta propuesta (spam o insulto). Escribe una si quieres."; b.appendChild(ta);
-        const bs = el("div", null, "botones");
-        const be = el("button", "Enviar"); be.onclick = () => accion({ tipo: "responder", id: c.id, texto: ta.value }); bs.appendChild(be);
-        const bi = el("button", "Ignorar"); bi.onclick = () => accion({ tipo: "ignorar", id: c.id }); bs.appendChild(bi);
-        b.appendChild(bs);
-      }
-      cc.appendChild(b);
+      const bx = el("button", "✕", "mal"); bx.title = "Descartar";
+      bx.onclick = async () => { it.classList.add("fuera"); const r = await accion({ tipo: "descartar", id: c.id }); if (r.ok) aviso("Descartada.", () => accion({ tipo: "deshacer", id: c.id })); };
+      bs.appendChild(bx);
     }
+    cu.appendChild(bs); it.appendChild(cu); co.appendChild(it);
+  }
+  const hh = $("hechos-hoy"); hh.textContent = "";
+  (d.cola || []).filter(c => c.estado === "publicado" && c.dia === hoy).forEach(c => {
+    const t = "✔ " + (NOMBRE_RED[c.red] || c.red) + (c.hora ? " " + c.hora : "");
+    if (c.url) { const a = el("a", t); a.href = c.url; a.target = "_blank"; hh.appendChild(a); } else hh.appendChild(el("span", t));
+  });
+  if (!hh.childNodes.length) hh.appendChild(el("span", "Nada todavía.", "vacio"));
+  const st = d.estadisticas || {};
+  $("stats").textContent = Object.keys(st).length ? Object.entries(st).map(([r, v]) => (NOMBRE_RED[r] || r) + ": " + v.seguidores + " seguidores").join(" · ") : "";
+  const mj = $("mejores"); mj.textContent = "";
+  (d.mejores || []).forEach(m => { const li = el("li"); const a = el("a", (m.texto || "(sin texto)").slice(0, 60)); if (m.url) { a.href = m.url; a.target = "_blank"; }
+    li.appendChild(a); li.appendChild(el("span", " · " + (m.tipo || "") + " · " + (m.reach || 0) + " alcance · " + (m.hora || "") + " h", "vacio")); mj.appendChild(li); });
+  if (!mj.childNodes.length) mj.appendChild(el("li", "Aún sin estadísticas: pulsa ⟳.", "vacio"));
+}
+
+function pintarComs(d) {
+  const cs = (d.comentarios || []).slice().reverse();
+  const pend = cs.filter(c => !c.respondido), hechos = cs.filter(c => c.respondido);
+  $("g-coms").hidden = !pend.length; $("g-coms").textContent = pend.length;
+  const cc = $("coms"); cc.textContent = ""; cc.className = pend.length ? "" : "vacio";
+  if (!pend.length) cc.textContent = "Sin comentarios por contestar. Los sencillos los contesta Asuka sola.";
+  for (const c of pend) {
+    const b = el("div", null, "com");
+    b.appendChild(el("b", c.autor)); b.appendChild(el("span", " · " + (NOMBRE_RED[c.red] || c.red || "youtube") + " · " + (c.fecha || ""), "vacio"));
+    if (c.url) { const l = el("a", " abrir"); l.href = c.url; l.target = "_blank"; b.appendChild(l); }
+    b.appendChild(el("div", c.texto));
+    const ta = el("textarea"); ta.style.minHeight = "70px"; ta.value = c.propuesta || ""; ta.placeholder = "Escribe la respuesta…"; b.appendChild(ta);
+    const bs = el("div", null, "botones");
+    const be = el("button", "Enviar", "lleno"); be.onclick = async () => { be.disabled = true; const r = await accion({ tipo: "responder", id: c.id, texto: ta.value }); if (r.ok) aviso("Respondido."); }; bs.appendChild(be);
+    const bi = el("button", "Ignorar"); bi.onclick = () => accion({ tipo: "ignorar", id: c.id }); bs.appendChild(bi);
+    b.appendChild(bs); cc.appendChild(b);
+  }
+  const ch = $("coms-hechos"); ch.textContent = "";
+  hechos.slice(0, 40).forEach(c => { const b = el("div", null, "com"); b.appendChild(el("b", c.autor)); b.appendChild(el("div", c.texto));
+    b.appendChild(el("div", (c.sola ? "Contestado sola: " : "Respondido: ") + c.respondido, "ok-txt")); ch.appendChild(b); });
+}
+
+function pintarMaterial(d) {
+  const pe = $("pedidas"); pe.textContent = "";
+  if ((d.prompts_lista || []).length) {
+    pe.appendChild(el("h2", "Fotos pedidas en cola (" + d.prompts_lista.length + ")"));
+    const caja = el("div", null, "caja peq");
+    caja.appendChild(el("div", "Salen unas 3-4 al día con el cupo gratis, en este orden. Para pedir más: mándale a Athena «fotos de asuka:» y la lista numerada.", "vacio"));
+    const bg = el("button", "🍌 Hacer 3 ya en Gemini (móvil)", "oro"); bg.style.margin = "6px 0";
+    bg.onclick = async () => { const r = await accion({ tipo: "rapida", que: "gemini" }); if (r.ok) aviso("Te llegan por Telegram con la foto de referencia."); };
+    caja.appendChild(bg);
+    d.prompts_lista.forEach((p, i) => { const f = el("div"); f.style.cssText = "display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--linea)";
+      f.appendChild(el("span", (i + 1) + ". " + p + (p.length >= 160 ? "…" : ""))); const x = el("button", "✕", "mal"); x.style.marginLeft = "auto"; x.style.flex = "none";
+      x.onclick = () => accion({ tipo: "quitar_prompt", i }); f.appendChild(x); caja.appendChild(f); });
+    pe.appendChild(caja);
+  }
+  const mz = d.mezcla || {};
+  $("mezcla").textContent = "Toca una foto para verla y cambiarle el color. En los vídeos salen " + (mz.publica || 0) + " % verdes, " + (mz.revisar || 0) + " % ámbar y " + (mz.no || 0) + " % rojas.";
+  const hace10 = new Date(Date.now() - 10 * 864e5).toLocaleDateString("sv");
+  const rf = $("refs"); rf.textContent = "";
+  const refs = (d.referencias || []).slice().reverse().filter(r => filtro === "todas" || (filtro === "nuevas" ? (r.nueva || "") >= hace10 : r.apta === filtro));
+  refs.slice(0, 240).forEach((r) => {
+    const f = el("figure", null, r.apta); f.appendChild(imagen("referencias/" + r.archivo, 240, r.escena));
+    f.appendChild(el("figcaption", String(parseInt(r.archivo.replace(/\D/g, ""), 10) || r.archivo)));
+    if ((r.nueva || "") >= hace10) f.appendChild(el("span", r.pedida ? "pedida" : "nueva", "nueva"));
+    f.onclick = () => {
+      const color = (apta, txt, cls) => { const b = el("button", txt, cls); if (r.apta === apta) b.disabled = true;
+        b.onclick = async () => { await accion({ tipo: "apta", archivo: r.archivo, apta }); cerrarVisor(); aviso(r.archivo + " → " + txt); }; return b; };
+      visor(r.archivo + " · " + (r.escena || "") + (r.pedida ? " · pedida: " + r.pedida.slice(0, 60) : ""), "referencias/" + r.archivo,
+        [color("publica", "Verde", "ok"), color("revisar", "Ámbar", "oro"), color("no", "Roja", "mal")]);
+    };
+    rf.appendChild(f);
+  });
+  if (!rf.childNodes.length) rf.appendChild(el("p", "No hay fotos con este filtro.", "vacio"));
+  const cl = $("clips"); cl.textContent = "";
+  (d.clips || []).slice().reverse().forEach((c) => {
+    const f = el("figure"); f.appendChild(imagen("clips/" + c.archivo, 220)); f.appendChild(el("figcaption", c.origen || c.escena || ""));
+    f.onclick = () => visor((c.origen || "") + " · " + (c.escena || ""), "clips/" + c.archivo); cl.appendChild(f);
+  });
+  if (!cl.childNodes.length) cl.appendChild(el("p", "Sin clips todavía.", "vacio"));
+}
+
+function pintarVideos(d) {
+  const vs = (d.videos || []).filter(v => !v.perdido).slice().reverse();
+  const c = $("videos"); c.textContent = "";
+  vs.slice(0, 60).forEach(v => {
+    const r = rel(v.ruta); const f = el("figure"); f.appendChild(imagen(r, 300));
+    f.appendChild(el("figcaption", v.titulo + (v.aprobado ? " ✔" : "") + (v.publicado && Object.keys(v.publicado).length ? " · publicado" : "")));
+    f.onclick = () => visor(v.titulo, r); c.appendChild(f);
+  });
+  if (!c.childNodes.length) c.appendChild(el("span", "Todavía no hay vídeos.", "vacio"));
+}
+
+function pintarDiario(d) {
+  const dia = (d.diario || []).slice(-120).reverse();
+  const c = $("diario"); c.textContent = ""; c.className = dia.length ? "" : "vacio";
+  if (!dia.length) { c.textContent = "Todavía no hay nada apuntado."; return; }
+  const nombres = { tu: "TÚ", athena: "ATHENA", video: "VÍDEO", material: "MATERIAL", ajuste: "AJUSTE", publicado: "PUBLICADO", comentario: "COMENTARIO" };
+  let fecha = "";
+  for (const ev of dia) {
+    const f = (ev.t || "").slice(0, 10);
+    if (f !== fecha) { fecha = f; const x = el("div", f.split("-").reverse().join("/"), "dia"); const fila0 = el("div", null, "ev"); fila0.appendChild(x); c.appendChild(fila0); }
+    const fila = el("div", null, "ev " + ev.tipo);
+    fila.appendChild(el("time", (ev.t || "").slice(11, 16)));
+    const cuerpo = el("div"); cuerpo.appendChild(el("b", nombres[ev.tipo] || (ev.tipo || "").toUpperCase())); cuerpo.appendChild(el("span", ev.texto));
+    if (ev.ruta && /\.(mp4|jpe?g|png|webp)$/i.test(ev.ruta)) { const r = rel(ev.ruta); const i = imagen(r, 200); i.onclick = () => visor(ev.texto, r); cuerpo.appendChild(i); }
+    fila.appendChild(cuerpo); c.appendChild(fila);
+  }
+}
+
+function pintarMas(d) {
+  const id = d.id || {};
+  // pasos: solo si queda alguno por hacer
+  $("d-progreso").hidden = !!d.todo_hecho;
+  const ul = $("pasos"); ul.textContent = "";
+  (d.orden || []).forEach(p => { const li = el("li", (d.titulos || {})[p] || p); if ((d.hechos || []).includes(p)) li.className = "ok"; ul.appendChild(li); });
+  // youtube
+  const yt = $("yt"); yt.textContent = ""; const y = d.youtube || {};
+  if (y.conectado) { const ca = y.canal || {}; const a = el("a", ca.titulo || "Canal"); a.href = ca.url || "#"; a.target = "_blank"; yt.appendChild(a);
+    yt.appendChild(el("div", (ca.suscriptores || 0) + " suscriptores · " + (ca.videos || 0) + " vídeos", "vacio peq")); }
+  else { yt.appendChild(el("p", "Sin conectar: conectado, sube los Shorts sola y lee los comentarios.", "vacio peq"));
+    const a = el("a", "Conectar YouTube", "boton"); a.href = "/nexus/youtube/conectar"; a.target = "_blank"; yt.appendChild(a); }
+  // cuentas
+  const tb = $("cuentas"); tb.textContent = "";
+  for (const [k, n] of Object.entries(d.redes || {})) {
+    const cu = (d.cuentas || {})[k] || {}, en = (d.enlaces || {})[k] || {}; const tr = el("tr");
+    const td1 = el("td"); if (cu.usuario) { const a = el("a", n + " · @" + cu.usuario); a.href = (en.perfil || "").replace("{u}", cu.usuario); a.target = "_blank"; td1.appendChild(a); } else td1.textContent = n;
+    tr.appendChild(td1); tr.appendChild(el("td", cu.estado === "creada" ? "✔" : "—", cu.estado === "creada" ? "ok-txt" : "vacio")); tb.appendChild(tr);
   }
   // portadas
   const po = $("portadas"); po.textContent = "";
-  (d.portadas || []).forEach((p) => {
-    const f = el("figure"); const i = el("img"); i.loading = "lazy"; i.src = archivo(p.archivo) + "?v=" + encodeURIComponent(d.portadas_v || "");
-    f.appendChild(i);
-    const c = el("figcaption"); c.appendChild(el("b", p.tipo + " · " + (p.red === "todas" ? "todas las redes" : ((d.redes || {})[p.red] || p.red)) + " · " + p.medida));
-    const a = el("a", "Descargar"); a.className = "boton"; a.href = archivo(p.archivo); a.download = p.archivo.split("/").pop();
-    c.appendChild(el("br")); c.appendChild(a);
-    const donde = typeof p.donde === "string" ? { [p.red]: p.donde } : (p.donde || {});
-    for (const [red, txt] of Object.entries(donde)) c.appendChild(el("div", ((d.redes || {})[red] || red) + ": " + txt));
-    f.appendChild(c); po.appendChild(f);
-  });
-  if (!po.childNodes.length) po.appendChild(el("p", "Aún no están hechas. Dile a Athena «nexus, haz las portadas».", "vacio"));
-  // material propio
-  const rf = $("refs"); rf.textContent = "";
-  (d.referencias || []).forEach((r) => {
-    const f = el("figure", null, r.apta); const i = el("img"); i.loading = "lazy";
-    i.src = archivo("referencias/" + r.archivo); i.alt = r.escena; i.title = r.escena + " · " + r.apta;
-    f.appendChild(i); f.appendChild(el("figcaption", String(parseInt(r.archivo.replace(/\D/g, ""), 10)))); rf.appendChild(f);
-  });
-  const cl = $("clips"); cl.textContent = "";
-  (d.clips || []).forEach((c) => {
-    const v = el("video"); v.controls = true; v.preload = "none"; v.muted = true; v.title = c.escena;
-    v.src = archivo("clips/" + c.archivo); cl.appendChild(v);
-  });
-  // mezcla
-  const mz = d.mezcla || {};
-  $("mezcla").textContent = "En los vídeos: " + (mz.publica || 0) + " % verdes, " + (mz.revisar || 0) + " % ámbar, " +
-    (mz.no || 0) + " % rojas. Se cambia con «nexus, mezcla 60 35 5».";
-  // diario
-  const dia = d.diario || [];
-  if (dia.length) {
-    const c = $("diario"); c.textContent = ""; c.className = "";
-    const nombres = { tu: "TÚ", athena: "ATHENA", video: "VÍDEO", material: "MATERIAL", ajuste: "AJUSTE", publicado: "PUBLICADO", comentario: "COMENTARIO" };
-    for (const ev of dia.slice().reverse()) {
-      const fila = el("div", null, "ev " + ev.tipo);
-      fila.appendChild(el("time", ev.t)); fila.appendChild(el("b", nombres[ev.tipo] || ev.tipo.toUpperCase()));
-      const cuerpo = el("div", ev.texto);
-      if (ev.ruta) {
-        const r = rel(ev.ruta);
-        const m = /\.mp4$/i.test(r) ? el("video") : /\.(jpe?g|png)$/i.test(r) ? el("img") : null;
-        if (m) { m.src = archivo(r); if (m.tagName === "VIDEO") { m.controls = true; m.preload = "none"; } cuerpo.appendChild(m); }
-      }
-      if (ev.caption) cuerpo.appendChild(el("div", ev.caption, "vacio"));
-      fila.appendChild(cuerpo); c.appendChild(fila);
-    }
-  }
-  // publicado y comentarios
-  const pubs = (d.videos || []).filter(v => v.publicado && Object.keys(v.publicado).length);
-  if (pubs.length) {
-    const c = $("publicado"); c.textContent = ""; c.className = "";
-    for (const v of pubs.slice().reverse()) {
-      const caja = el("div", null, "pub");
-      caja.appendChild(el("b", v.titulo));
-      for (const [red, info] of Object.entries(v.publicado)) {
-        const linea = el("div", (d.redes[red] || red) + ": ");
-        const url = typeof info === "string" ? info : info.url;
-        if (url) { const a = el("a", url); a.href = url; a.target = "_blank"; a.style.color = "var(--cian)"; linea.appendChild(a); }
-        caja.appendChild(linea);
-      }
-      const coms = (d.comentarios || []).filter(x => x.video === v.titulo);
-      if (coms.length) { const ul = el("ul"); coms.forEach(x => ul.appendChild(el("li", (x.autor ? "@" + x.autor + ": " : "") + x.texto + (x.red ? "  (" + (d.redes[x.red] || x.red) + ")" : "")))); caja.appendChild(ul); }
-      c.appendChild(caja);
-    }
-  }
-  // todos los archivos
-  const ga = $("archivos"); ga.textContent = "";
-  (d.archivos || []).forEach((r) => {
-    const a = el("a"); a.href = archivo(r); a.target = "_blank"; a.title = r;
-    if (/\.mp4$/i.test(r)) { const v = el("video"); v.preload = "metadata"; v.muted = true; v.src = archivo(r) + "#t=0.5"; a.appendChild(v); }
-    else if (/\.wav$/i.test(r)) a.appendChild(el("div", "🔊 " + r, "wav"));
-    else { const i = el("img"); i.loading = "lazy"; i.src = archivo(r); a.appendChild(i); }
-    a.appendChild(el("div", r.split("/").pop()));
-    ga.appendChild(a);
-  });
-  if (!ga.childNodes.length) ga.appendChild(el("p", "Sin archivos todavía.", "vacio"));
-  // vídeos
-  const vs = d.videos || [];
-  if (vs.length) {
-    const c = $("videos"); c.textContent = ""; c.className = "";
-    for (const v of vs.slice().reverse()) {
-      const caja = el("div", null, "video");
-      caja.appendChild(el("b", v.titulo + (v.aprobado ? "  ✔ aprobado" : "")));
-      const vid = el("video"); vid.controls = true; vid.preload = "none"; vid.src = archivo(rel(v.ruta)); caja.appendChild(vid);
-      caja.appendChild(el("div", v.fecha, "vacio"));
-      c.appendChild(caja);
-    }
-  }
-  // biblia
-  const b = id.biblia;
-  if (b) {
-    const dl = $("biblia"); dl.textContent = ""; dl.className = "";
-    for (const [k, v] of Object.entries(b)) {
-      if (k === "apariencia_en") continue;
-      dl.appendChild(el("dt", k.replace("_", " ")));
-      dl.appendChild(el("dd", typeof v === "string" ? v : Array.isArray(v) ? v.map(x => typeof x === "string" ? x : Object.values(x).join(": ")).join(" · ") : JSON.stringify(v)));
-    }
-  }
-  // calendario
-  if (id.calendario && id.calendario.length) {
-    const c = $("calendario"); c.textContent = ""; c.className = "";
-    for (const dia of id.calendario) {
-      c.appendChild(el("dt", dia.dia));
-      c.appendChild(el("dd", (dia.tareas || []).join(" · ")));
-    }
-  }
+  (d.portadas || []).forEach(p => { const f = el("figure"); f.style.margin = "0"; const i = imagen(p.archivo, 480); i.onclick = () => visor(p.tipo, p.archivo);
+    f.appendChild(i); f.appendChild(el("figcaption", p.tipo + " · " + (p.red === "todas" ? "todas" : (NOMBRE_RED[p.red] || p.red)) + " · " + p.medida, "peq vacio")); po.appendChild(f); });
+  // biblia y calendario
+  const b = id.biblia; if (b) { const dl = $("biblia"); dl.textContent = ""; dl.className = "";
+    for (const [k, v] of Object.entries(b)) { if (k === "apariencia_en") continue; dl.appendChild(el("dt", k.replace(/_/g, " ")));
+      dl.appendChild(el("dd", typeof v === "string" ? v : Array.isArray(v) ? v.map(x => typeof x === "string" ? x : Object.values(x).join(": ")).join(" · ") : JSON.stringify(v))); } }
+  if (id.calendario && id.calendario.length) { const c = $("calendario"); c.textContent = ""; c.className = "";
+    id.calendario.forEach(x => { c.appendChild(el("dt", x.dia)); c.appendChild(el("dd", (x.tareas || []).join(" · "))); }); }
 }
-let ultimo = "";
-async function accion(datos) {
-  const r = await (await fetch("/nexus/accion", { method: "POST",
-    headers: { "Content-Type": "application/json", "X-Jarvis": "1" }, body: JSON.stringify(datos) })).json();
-  if (!r.ok) alert("No se ha podido: " + (r.error || "error"));
-  ultimo = ""; cargar(); return r;
+function pintarArchivos() {
+  const ga = $("archivos"); if (ga.childNodes.length) return;
+  (D.archivos || []).slice(0, 150).forEach(r => { const a = el("a"); a.href = archivo(r); a.target = "_blank"; a.title = r;
+    if (/\.wav$/i.test(r)) a.appendChild(el("div", "🔊", "roto")); else a.appendChild(imagen(r, 180));
+    a.appendChild(el("div", r.split("/").pop())); ga.appendChild(a); });
 }
-async function orden(texto) {
-  await fetch("/orden", { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis": "1" },
-                          body: JSON.stringify({ texto }) });
-  ultimo = ""; cargar();
-}
-// correo del personaje (solo lectura)
-async function correo(forzar) {
+$("d-archivos").addEventListener("toggle", (e) => { if (e.target.open) pintarArchivos(); });
+
+// ---------------- correo (solo lectura)
+async function correo() {
   const est = $("correo-estado");
   try {
     const r = await (await fetch("/nexus/correo?t=" + Date.now())).json();
-    if (!r.configurado) {
-      est.textContent = "Sin conectar todavía: en el portátil, ejecuta  bash ~/jarvis/configurar_correo_nexus.sh  (te explica cómo crear la contraseña de aplicación de Google).";
-      return;
-    }
+    if (!r.configurado) { est.textContent = "Sin conectar todavía."; return; }
     const nuevos = r.correos.filter(c => !c.leido).length;
-    est.textContent = r.correos.length + " correos recientes" + (nuevos ? " · " + nuevos + " sin leer" : "") + (r.error ? " · aviso: " + r.error : "");
+    est.textContent = r.correos.length + " correos recientes" + (nuevos ? " · " + nuevos + " sin leer" : "");
     const ul = $("correo-lista"); ul.textContent = "";
     for (const c of r.correos) {
-      const li = el("li", null, c.leido ? "" : "nuevo");
-      li.appendChild(el("b", c.asunto)); li.appendChild(el("small", c.de + " · " + c.fecha));
-      li.onclick = async () => {
-        ul.querySelectorAll("li.sel").forEach(x => x.classList.remove("sel")); li.classList.add("sel");
-        const a = $("correo-leer"); a.className = ""; a.textContent = "Abriendo…";
-        const m = await (await fetch("/nexus/correo/" + encodeURIComponent(c.uid))).json();
-        a.textContent = "";
+      const li = el("li", null, c.leido ? "" : "nuevo"); li.appendChild(el("b", c.asunto)); li.appendChild(el("small", c.de + " · " + c.fecha));
+      li.onclick = async () => { const a = $("correo-leer"); a.hidden = false; a.textContent = "Abriendo…";
+        const m = await (await fetch("/nexus/correo/" + encodeURIComponent(c.uid))).json(); a.textContent = "";
         if (m.error) { a.textContent = "No se ha podido abrir: " + m.error; return; }
-        a.appendChild(el("h3", m.asunto));
-        a.appendChild(el("div", "De: " + m.de + "\nPara: " + m.para + "\n" + m.fecha, "vacio"));
-        if (m.adjuntos && m.adjuntos.length) a.appendChild(el("div", "Adjuntos: " + m.adjuntos.join(", "), "vacio"));
-        a.appendChild(el("p", m.texto));
-      };
+        a.appendChild(el("b", m.asunto)); a.appendChild(el("div", "De: " + m.de + " · " + m.fecha, "vacio peq")); a.appendChild(el("p", m.texto)); };
       ul.appendChild(li);
     }
-  } catch (e) { est.textContent = "El asistente se está reiniciando…"; }
+  } catch (e) { est.textContent = "No disponible ahora."; }
 }
-async function cargar() {
+$("correo-recargar").onclick = correo;
+
+// ---------------- datos
+async function cargar(forzar) {
+  if (document.hidden && !forzar) return;
+  const activo = document.activeElement;
+  if (!forzar && activo && (activo.tagName === "TEXTAREA" || activo.tagName === "INPUT")) return;   // no se pierde lo que escribes
+  if (!forzar && $("visor").classList.contains("abierto")) return;
   try {
     const txt = await (await fetch("/nexus/datos?t=" + Date.now())).text();
-    if (txt === ultimo) return;                 // sin cambios: no se repinta (no corta un vídeo que se está viendo)
+    if (txt === ultimo) return;
+    const abiertos = [...document.querySelectorAll(".item details[open]")].length;
+    if (abiertos && !forzar) return;                          // estás leyendo un texto: luego
     ultimo = txt; pintar(JSON.parse(txt));
-  } catch (e) { /* el asistente se está reiniciando */ }
+  } catch (e) { /* reiniciándose */ }
 }
-cargar(); setInterval(cargar, 10000);
-$("plan-nuevo").onclick = (ev) => { ev.target.textContent = "Preparando… (1-2 min)"; orden("nexus plan de hoy"); };
-correo(); setInterval(correo, 120000);
-$("correo-recargar").onclick = () => correo(true);
+// pestañas (y se recuerda la última)
+function ver(v) {
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("sel", b.dataset.v === v));
+  document.querySelectorAll(".vista").forEach(s => s.classList.toggle("sel", s.id === "v-" + v));
+  try { localStorage.setItem("nexus-vista", v); } catch (e) {}
+  if (v === "mas" && !ver.correo) { ver.correo = true; correo(); }
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => ver(b.dataset.v));
+try { const v = localStorage.getItem("nexus-vista"); if (v && $("v-" + v)) ver(v); } catch (e) {}
+document.querySelectorAll("#filtros button").forEach(b => b.onclick = () => {
+  filtro = b.dataset.f; document.querySelectorAll("#filtros button").forEach(x => x.classList.toggle("sel", x === b)); pintarMaterial(D); });
+// acciones rápidas
+const RAPIDAS = { fotos: "Haciendo fotos nuevas de Asuka (te llegan por Telegram).", clip: "Haciendo un clip con movimiento.",
+  narrado: "Haciendo un vídeo narrado (10-20 min).", hedra: "Te mando la foto y el audio para Hedra por Telegram.",
+  plan: "Preparando el plan de hoy (1-2 min).", comentarios: "Leyendo comentarios…", estadisticas: "Actualizando estadísticas…" };
+document.querySelectorAll("#rapidas button").forEach(b => b.onclick = async () => {
+  b.disabled = true; const r = await accion({ tipo: "rapida", que: b.dataset.que }); b.disabled = false;
+  if (r.ok) aviso(RAPIDAS[b.dataset.que] || "Hecho.");
+});
+$("refrescar").onclick = async () => {
+  const b = $("refrescar"); b.classList.add("gira");
+  await accion({ tipo: "rapida", que: "refrescar" }, true);
+  setTimeout(async () => { await cargar(true); b.classList.remove("gira"); aviso("Actualizado."); }, 4000);
+};
+document.addEventListener("visibilitychange", () => { if (!document.hidden) cargar(true); });
+cargar(true); setInterval(cargar, 15000);
 </script>
 </body>
 </html>

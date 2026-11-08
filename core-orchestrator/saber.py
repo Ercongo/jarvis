@@ -202,6 +202,18 @@ sirve y si se puede usar en un portátil Ubuntu modesto (4 núcleos, 6 GB de RAM
 "nota": "nota en markdown (250-500 palabras): ## Qué es, ## Para qué sirve, ## Requisitos, ## Cómo se instala (los \
 comandos tal cual del README), ## Ojo con (licencia, peso, mantenimiento)"}"""
 
+INSTR_ANALISIS = """Eres Athena, ingeniera de software. Te paso la ficha de un repositorio de GitHub, su árbol de archivos, \
+el contenido de sus archivos clave y el README. Haz un análisis PROFUNDO y estructurado en español de España, basado SOLO \
+en lo que te paso (si algo no se ve, di «no consta»; nada inventado). Los títulos de los apartados, cortos y tal cual («## 1. Propósito», «## 2. Arquitectura y flujo»…), sin repetir lo que va entre paréntesis. Devuelve SOLO JSON: {"voz": "3-4 frases para decir \
+en voz alta: qué es, si nos sirve y lo más importante", "nota": "markdown con EXACTAMENTE estos apartados: \
+## 1. Propósito (qué problema resuelve y para quién) · ## 2. Arquitectura y flujo (componentes y cómo pasa la información, \
+de la entrada a la salida; un diagrama en texto si ayuda) · ## 3. Tecnologías y librerías clave (con para qué se usa \
+cada una) · ## 4. Archivos importantes (tabla: archivo | qué hace) · ## 5. Instalación y ejecución (pasos exactos y \
+comandos tal cual; requisitos de hardware; si cabe en un portátil Ubuntu de 4 núcleos, 6 GB de RAM y sin GPU) · \
+## 6. Conceptos técnicos que enseña · ## 7. Ventajas · ## 8. Limitaciones y riesgos (licencia, mantenimiento, peso, \
+seguridad) · ## 9. Mejoras posibles y cómo nos serviría a Athena y a Asuka (concreto)", "etiquetas": ["3-6 palabras \
+clave"]}"""
+
 INSTR_VIDEO = """Eres Jarvis. Te paso los subtítulos de uno o varios vídeos de YouTube numerados y lo que quiere saber \
 el usuario. Resume lo que enseñan en español de España, SOLO con lo que se dice en ellos. Devuelve SOLO JSON: \
 {"titulo": "tema en 2-6 palabras", "voz": "3-4 frases para decir en voz alta", "nota": "nota en markdown \
@@ -560,10 +572,37 @@ class Saber:
         threading.Thread(target=hilo, daemon=True).start()
         return Respuesta(aviso)
 
+    def buscar_estudios(self, tema: str, peticion: str) -> Respuesta:
+        def trabajo() -> str:
+            busqueda = self._en_ingles(tema)
+            arts = fuentes.estudios(busqueda, 6)
+            if not arts:
+                return f"No encuentro estudios sobre {tema}."
+            bloque = "\n\n".join(f"[{i + 1}] {a['titulo']} ({a['año']}, {a['revista']}, {a['citas']} citas)\n{a['resumen']}"
+                                  for i, a in enumerate(arts))
+            r = self._ia("Eres una divulgadora científica. Con SOLO estos estudios, responde en español de España, en 3-5 frases "
+                         "claras: qué dice la evidencia, si hay acuerdo o no, y lo que no está claro. Cita los estudios como [1], "
+                         "[2]… Devuelve JSON {\"voz\": \"…\"}.", f"Pregunta: {peticion}\n\nEstudios:\n{bloque}",
+                         max_tokens=700, timeout=60)
+            lista = "\n".join(f"[{i + 1}] {a['titulo']} ({a['año']}) {a['url']}" for i, a in enumerate(arts))
+            self._guardar_nota(f"Estudios: {tema}", str(r.get("voz", "")) + "\n\n" + lista, peticion,
+                               [(a["titulo"], a["url"]) for a in arts])
+            return str(r.get("voz") or "").strip() + ("\n\n" + lista if self.es_telegram() else
+                                                       f" Lo saco de {len(arts)} estudios; te los dejo apuntados.")
+        return self._en_hilo(trabajo, f"Busco estudios científicos sobre {tema} y te cuento qué dicen.")
+
     def buscar_github(self, consulta: str) -> Respuesta:
         busqueda = self._en_ingles(consulta)
         try:
             repos = fuentes.github_buscar(busqueda, 5) or (fuentes.github_buscar(consulta, 5) if busqueda != consulta else [])
+            if len(repos) < 3 and len(busqueda.split()) > 2:       # demasiadas palabras: GitHub exige todas
+                vistos = {r["nombre"] for r in repos}
+                repos += [r for r in fuentes.github_buscar(" ".join(busqueda.split()[:2]), 5) if r["nombre"] not in vistos]
+                repos = repos[:5]
+            # fuera configuraciones personales («.config», «dotfiles»); y el más usado primero
+            repos = [r for r in repos if not re.search(r"(?i)/(\.\w+|dotfiles?|config)$", r["nombre"])] or repos
+            repos.sort(key=lambda r: -r["estrellas"])
+            self.log(f"saber: github «{consulta}» → «{busqueda}» ({len(repos)})")
         except Exception as e:
             return Respuesta(f"No he podido buscar en GitHub: {e}" if isinstance(e, RuntimeError)
                              else "No he podido buscar en GitHub ahora mismo.")
@@ -593,21 +632,129 @@ class Saber:
                          + (f" El primero: {descr.rstrip('.')}." if descr else "")
                          + " Te los he puesto en pantalla. Dime «háblame del primero» o «ponlo en práctica».")
 
-    def estudiar_repo(self, nombre: str, peticion: str) -> Respuesta:
+    def estudiar_repo(self, nombre: str, peticion: str, guardar_como: str = "") -> Respuesta:
+        """Análisis a fondo en 9 apartados (propósito, arquitectura, tecnologías, archivos, instalación, conceptos,
+        ventajas, limitaciones, mejoras), guardado con nombre en saber/notas y en la bóveda de Obsidian."""
         if not self.ia:
             return Respuesta("Para estudiar un repositorio necesito la IA en la nube, y ahora no está disponible.")
 
         def trabajo() -> str:
             info = fuentes.github_repo(nombre)
+            try:
+                est = fuentes.github_estructura(nombre)
+            except Exception as e:
+                self.log(f"saber: estructura de {nombre}: {e!r}")
+                est = {"rutas": [], "archivos": {}, "total": 0, "temas": []}
             ficha = (f"Repositorio: {info['nombre']} ({info['url']})\nEstrellas: {info['estrellas']} · Lenguaje: "
                      f"{info['lenguaje']} · Licencia: {info['licencia'] or 'sin indicar'} · Última actividad: "
-                     f"{info['actualizado']} · Versión: {info.get('version') or '-'}\nDescripción: {info['descripcion']}")
-            spec = self._ia(INSTR_REPO, ficha + "\n\nREADME:\n" + info.get("readme", "")[:14000], max_tokens=1800, timeout=90)
-            self._guardar_nota(f"GitHub {info['nombre']}", ficha + "\n\n" + str(spec.get("nota") or ""), peticion,
-                               [(info["nombre"], info["url"])])
-            return (str(spec.get("voz") or f"Ya he leído {info['nombre']}.").strip()
-                    + " Lo tengo apuntado; si quieres, dime «ponlo en práctica».")
-        return self._en_hilo(trabajo, f"Me leo el repositorio {nombre} y te cuento.")
+                     f"{info['actualizado']} · Versión: {info.get('version') or '-'} · Temas: "
+                     f"{', '.join(est.get('temas') or []) or '-'}\nDescripción: {info['descripcion']}")
+            arbol = "\n".join(est["rutas"][:160]) + (f"\n… ({est['total']} archivos en total)" if est["total"] > 160 else "")
+            claves = "\n\n".join(f"### {r}\n{c}" for r, c in est["archivos"].items())
+            entrada = (ficha + "\n\nÁRBOL:\n" + arbol[:3500] + "\n\nARCHIVOS CLAVE:\n" + claves[:7000]
+                       + "\n\nREADME:\n" + info.get("readme", "")[:7000])
+            spec = self._ia(INSTR_ANALISIS, entrada, max_tokens=3500, timeout=150)
+            nota = str(spec.get("nota") or "")
+            if nota.count("## ") < 6:                    # se ha quedado corto: al menos lo del README
+                spec = self._ia(INSTR_REPO, ficha + "\n\nREADME:\n" + info.get("readme", "")[:12000],
+                                max_tokens=1800, timeout=90)
+                nota = str(spec.get("nota") or "")
+            titulo = f"Repo · {guardar_como.strip() or info['nombre']}"
+            etiquetas = " ".join("#" + re.sub(r"\W+", "-", normalizar(str(x))).strip("-")
+                                 for x in (spec.get("etiquetas") or [])[:6])
+            ruta = self._guardar_nota(titulo, ficha + ("\n\n" + etiquetas if etiquetas else "") + "\n\n" + nota,
+                                      peticion, [(info["nombre"], info["url"])])
+            indice = self._indice_repos()
+            indice[normalizar(guardar_como or info["nombre"])] = {"nota": ruta.name, "repo": info["nombre"],
+                                                                   "fecha": dt.date.today().isoformat()}
+            (NOTAS / "repositorios.json").write_text(json.dumps(indice, ensure_ascii=False, indent=1), encoding="utf-8")
+            try:
+                import boveda
+                boveda.exportar()
+            except Exception:
+                pass
+            return (str(spec.get("voz") or f"Ya he analizado {info['nombre']}.").strip()
+                    + f" Guardado como «{titulo}» (también en Obsidian). Para recuperarlo: «análisis de "
+                    f"{guardar_como or info['nombre'].split('/')[-1]}».")
+        return self._en_hilo(trabajo, f"Analizo a fondo el repositorio {nombre}: estructura, archivos clave y README. "
+                                      "Tardo un par de minutos.")
+
+    def _indice_repos(self) -> dict:
+        try:
+            return json.loads((NOTAS / "repositorios.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def recuperar_analisis(self, nombre: str) -> Respuesta:
+        """«análisis de wan2gp» → el resumen en voz y la nota entera como archivo."""
+        clave = normalizar(nombre).strip()
+        indice = self._indice_repos()
+        cand = [(k, v) for k, v in indice.items() if clave and (clave in k or k.split("/")[-1] in clave)]
+        if not cand:
+            notas = [p for p in NOTAS.glob("repo-*.md") if clave.replace(" ", "-") in p.stem] if NOTAS.exists() else []
+            if not notas:
+                guardados = ", ".join(v["repo"].split("/")[-1] for v in list(indice.values())[-8:]) or "ninguno todavía"
+                return Respuesta(f"No tengo ningún análisis guardado de «{nombre}». Tengo: {guardados}.")
+            ruta = notas[0]
+        else:
+            ruta = NOTAS / cand[-1][1]["nota"]
+        texto = ruta.read_text(encoding="utf-8")
+        m = re.search(r"## 1\. Propósito[^\n]*\n(.+?)(?:\n## |\Z)", texto, re.S)
+        resumen = re.sub(r"\s+", " ", (m.group(1) if m else texto[:600])).strip()[:500]
+        return Respuesta(f"{resumen} El análisis completo te lo paso como archivo.", archivo=str(ruta))
+
+    @staticmethod
+    def _titulo_en_pantalla() -> str:
+        """El título del vídeo de YouTube que está en la ventana del navegador («… - YouTube — Mozilla Firefox»)."""
+        import subprocess
+        try:
+            r = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=3)
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        for linea in r.stdout.splitlines():
+            titulo = linea.split(None, 3)[3] if len(linea.split(None, 3)) > 3 else ""
+            m = re.match(r"^(?:\(\d+\)\s*)?(.+?)\s+[-–—]\s+YouTube\b", titulo)
+            if m and m.group(1).strip().lower() not in ("youtube", "inicio"):
+                return m.group(1).strip()
+        return ""
+
+    @staticmethod
+    def _video_local_en_pantalla() -> Path | None:
+        """Un vídeo del portátil abierto en un reproductor (VLC, mpv, Vídeos, Celluloid…): su archivo."""
+        import subprocess
+        from archivos import buscar_en_casa
+        try:
+            r = subprocess.run(["wmctrl", "-lx"], capture_output=True, text=True, timeout=3)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        for linea in r.stdout.splitlines():
+            p = linea.split(None, 4)
+            if len(p) < 5 or not re.search(r"(?i)vlc|mpv|totem|celluloid|smplayer|haruna|showtime|parole", p[2]):
+                continue
+            m = re.search(r"([^/\\]+\.(?:mp4|mkv|webm|mov|avi|m4v))", p[4], re.I)
+            nombre = m.group(1) if m else re.sub(r"\s+[-–—]\s+.*$", "", p[4]).strip()
+            if not nombre:
+                continue
+            for c in buscar_en_casa(nombre, carpetas=False)[:3]:
+                if c.is_file():
+                    return c
+        return None
+
+    def estudiar_archivo(self, ruta: Path, peticion: str) -> Respuesta:
+        """Aprende de un vídeo del portátil: lo escucha (Whisper en Groq) y guarda lo que enseña."""
+        if not self.ia:
+            return Respuesta("Para aprender de vídeos necesito la IA en la nube, y ahora no está disponible.")
+
+        def trabajo() -> str:
+            t = fuentes.transcribir_audio(ruta, limite=14000)
+            if not t or len(t) < 200:
+                raise RuntimeError("no se oye nadie hablando en el vídeo, así que no puedo saber qué enseña")
+            spec = self._ia(INSTR_VIDEO, f"Lo que quiere: {peticion}\n\nVídeos:\n[1] {ruta.stem}\n{t}",
+                            max_tokens=2000, timeout=90)
+            titulo = str(spec.get("titulo") or ruta.stem)[:80]
+            self._guardar_nota(titulo, str(spec.get("nota") or spec.get("voz") or ""), peticion, [(ruta.name, str(ruta))])
+            return (str(spec.get("voz") or "").strip() + " Lo he guardado. Si quieres, dime «ponlo en práctica».")
+        return self._en_hilo(trabajo, f"Me veo «{ruta.stem}» y te cuento lo que enseña. Tardo un par de minutos.")
 
     # ---------- YouTube
     def estudiar_videos(self, consulta: str | None, peticion: str, ids: list[str] | None = None) -> Respuesta:
@@ -627,6 +774,8 @@ class Saber:
                 if fuentes._segundos(v.get("duracion", "")) > 75 * 60:
                     continue
                 t = fuentes.youtube_transcripcion(v["id"], 14000)
+                if (not t or len(t) < 300) and (ids or not leidos):   # sin subtítulos: se escucha el audio
+                    t = fuentes.youtube_por_audio(v["id"], limite=14000)
                 if t and len(t) > 300:
                     leidos.append((v, t))
             if not leidos:
@@ -1032,6 +1181,22 @@ class Saber:
     def manejar(self, peticion: str) -> Respuesta | None:
         t = normalizar(peticion).strip(" .¿?¡!")
         t = re.sub(r"^(?:por favor|oye|venga|jarvis)[ ,]+", "", t)
+        t = re.sub(r"^(?:(?:me )?puedes|podrias|quiero que|necesito que|me gustaria que)\s+", "", t)
+        t = re.sub(r"^busques\b", "busca", t)
+        # «aprende del vídeo que estoy viendo / que se reproduce en pantalla»: el título sale de la ventana
+        if re.search(r"\b(aprende|estudia|resume|mira|ve|veas|mirate|aprendas)\w*\b.*\bvideo\b", t) and re.search(
+                r"\b(pantalla|estoy viendo|estoy reproduciendo|se (esta )?reproduc\w*|reproduzco|tengo puesto|este video)\b", t):
+            titulo = self._titulo_en_pantalla()
+            if not titulo:
+                local = self._video_local_en_pantalla()
+                if local:
+                    return self.estudiar_archivo(local, peticion)
+                return Respuesta("No veo ningún vídeo en la pantalla (ni de YouTube en el navegador ni en un "
+                                 "reproductor). Ponlo y me lo vuelves a pedir.")
+            vids = fuentes.youtube_buscar(titulo, 1)
+            if not vids:
+                return Respuesta(f"Veo «{titulo}», pero no lo encuentro en YouTube para leer lo que dice.")
+            return self.estudiar_videos(None, peticion, ids=[vids[0]["id"]])
 
         # temas que sigue
         m = re.match(r"^(?:mantenme (?:informado|al dia|al tanto)|informame (?:cada dia|a diario|todos los dias|"
@@ -1132,6 +1297,12 @@ class Saber:
         if re.fullmatch(vb + r"(?: en (?:internet|github|youtube))?", t):
             return Respuesta("¿Sobre qué tema? Dímelo así: aprende sobre la aerotermia, o busca en github un lector de PDF.")
 
+        # estudios científicos (como Consensus): «busca estudios sobre la creatina», «qué dice la ciencia de dormir poco»
+        m = re.search(r"\b(?:estudios|articulos cientificos|papers|investigaciones|evidencia cientifica)\s+(?:sobre|de|acerca de)\s+(.+)$"
+                      r"|\bque dice la ciencia (?:sobre|de|del)\s+(.+)$", t)
+        if m:
+            return self.buscar_estudios((m.group(1) or m.group(2)).strip(" ."), peticion)
+
         # GitHub
         m = re.match(r"^(?:busca|buscar|buscame|mira|encuentra|encuentrame)\s+(?:en\s+)?github\s+(?:a ver si hay\s+)?"
                      r"(?:algun\w* |un |una |unos |unas )?(?:repositorio\w*|proyecto\w*|programa\w*|herramienta\w*|apps?)?"
@@ -1174,7 +1345,22 @@ class Saber:
                     repo = repo or fuentes.buscar_repo_por_nombre(nombre)
                     if not repo:
                         return Respuesta(f"No encuentro en GitHub un repositorio llamado {nombre}.")
-                    return self.estudiar_repo(repo, peticion)
+                    como = re.search(r"(?i)(?:gu[aá]rdalo|ll[aá]malo)\s+(?:como\s+)?[«\"']?([\w .-]{2,40})", peticion)
+                    return self.estudiar_repo(repo, peticion, como.group(1).strip() if como else "")
+
+        # análisis guardados y «guárdalo como»
+        m = re.match(r"^(?:recupera|abre|lee|dime|muestrame|ensename|pasame|mandame)?\s*(?:el\s+)?analisis\s+(?:de|del)\s+"
+                     r"(?:repositorio\s+|repo\s+)?(.{2,60})$", t)
+        if m and not re.search(r"\b(haz|analiza|hazme)\b", t):
+            return self.recuperar_analisis(m.group(1))
+        if re.search(r"\b(que analisis|analisis guardados|repositorios analizados)\b", t):
+            ind = self._indice_repos()
+            return Respuesta(("Tengo analizados: " + ", ".join(f"{k} ({v['fecha']})" for k, v in ind.items()) + ".")
+                             if ind else "Todavía no he analizado ningún repositorio a fondo.")
+        m = re.search(r"(?:github\.com/)([\w.-]+/[\w.-]+)", peticion)
+        if m and re.search(r"\b(analiza\w*|estudia\w*|revisa\w*|aprende\w*|leete|mira|que es|que hace)\b", t):
+            como = re.search(r"(?i)(?:gu[aá]rdalo|ll[aá]malo|como nombre)\s+(?:como\s+)?[«\"']?([\w .-]{2,40})", peticion)
+            return self.estudiar_repo(m.group(1).removesuffix(".git"), peticion, como.group(1).strip() if como else "")
 
         # YouTube
         vid = fuentes.id_de_youtube(peticion)

@@ -56,6 +56,7 @@ class Telegram:
         self.ordenes: queue.Queue = queue.Queue()
         self.respuestas: queue.Queue | None = None     # mientras esperamos un "sí/no"
         self.al_recibir_archivo: Callable[[Path, bool], str] | None = None   # Jarvis lo abre en el portátil
+        self.para_redes: Callable[[Path, str], str | None] | None = None     # Nexus: publicarlo en las redes
 
     @property
     def activo(self) -> bool:
@@ -205,6 +206,14 @@ class Telegram:
             d = msg["document"]
             self.ordenes.put(("documento", (d["file_id"], msg.get("caption", ""), d.get("file_name"))))
             return
+        if "video" in msg:                             # clips (p. ej. de Xbox): Telegram solo deja bajar hasta 20 MB
+            v, pie = msg["video"], msg.get("caption", "")
+            nombre = v.get("file_name") or f"Video_{time.strftime('%Y-%m-%d_%H-%M-%S')}.mp4"
+            if v.get("file_size", 0) > 20_000_000:
+                self.enviar("Ese vídeo pasa de 20 MB y Telegram no me deja bajarlo. Pásalo por USB o a Descargas.")
+                return
+            self.ordenes.put(("documento", (v["file_id"], pie, nombre)))
+            return
         if "voice" in msg or "audio" in msg:
             self.ordenes.put(("voz", (msg.get("voice") or msg.get("audio"))["file_id"]))
             return
@@ -229,6 +238,11 @@ class Telegram:
                         nombre = f"Foto_{time.strftime('%Y-%m-%d_%H-%M-%S')}.jpg"
                     ruta = self._descargar(file_id, carpeta, nombre)
                     self.log(f"telegram: recibido {ruta}")
+                    if pie.strip() and self.para_redes:      # «instagram», «todas», «xbox»… → lo publica Asuka
+                        r = self.para_redes(ruta, pie.strip())
+                        if r:
+                            self.enviar("📥 " + r)
+                            continue
                     aviso = self.al_recibir_archivo(ruta, es_foto) if self.al_recibir_archivo else ""
                     self.enviar(f"📥 Guardado en {carpeta.parent.name}/Telegram/{ruta.name}. {aviso}".strip())
                     if pie.strip():                   # si la foto lleva texto, se trata como una orden

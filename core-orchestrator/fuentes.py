@@ -17,6 +17,7 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 from perfil import SECRETOS
 
@@ -98,6 +99,39 @@ def github_repo(nombre: str, limite: int = 20000) -> dict:
     except Exception:
         r["version"] = ""
     return r
+
+
+CLAVE_ARCHIVOS = re.compile(r"(?i)(^|/)(package\.json|pyproject\.toml|requirements[\w.-]*\.txt|setup\.(py|cfg)|"
+                            r"cargo\.toml|go\.mod|dockerfile|docker-compose[\w.-]*\.ya?ml|compose\.ya?ml|makefile|"
+                            r"\.env\.example|environment\.ya?ml)$")
+ENTRADAS = re.compile(r"(?i)(^|/)(main|app|cli|server|index|run|__main__|wgp|webui|launch|start)\.(py|js|ts|mjs|go|rs|sh)$")
+RUIDO = re.compile(r"(?i)(^|/)(node_modules|\.git|dist|build|vendor|__pycache__|\.github|docs?/assets|"
+                   r"tests?/fixtures|site-packages)(/|$)|\.(png|jpe?g|gif|svg|ico|webp|mp4|mp3|wav|lock|min\.js|"
+                   r"woff2?|ttf|pdf|zip|bin|onnx|safetensors|pt)$")
+
+
+def github_estructura(nombre: str, max_rutas: int = 220, max_archivos: int = 8, por_archivo: int = 1800) -> dict:
+    """Para un análisis a fondo: el árbol de archivos (sin ruido) y el contenido de los archivos clave
+    (manifiestos de dependencias, Docker, Makefile y puntos de entrada), recortados."""
+    info = _gh(f"/repos/{nombre}")
+    rama = info.get("default_branch", "main")
+    try:
+        arbol = _gh(f"/repos/{nombre}/git/trees/{urllib.parse.quote(rama)}", {"recursive": "1"}, timeout=25)
+        rutas = [x["path"] for x in arbol.get("tree", []) if x.get("type") == "blob" and not RUIDO.search(x["path"])]
+    except Exception:
+        rutas = []
+    rutas.sort(key=lambda r: (r.count("/"), r.lower()))
+    clave = [r for r in rutas if CLAVE_ARCHIVOS.search(r) and r.count("/") <= 2]
+    entrada = [r for r in rutas if ENTRADAS.search(r) and r.count("/") <= 2]
+    elegidos = list(dict.fromkeys(clave[:5] + entrada[:5]))[:max_archivos]
+    archivos = {}
+    for r in elegidos:
+        try:
+            archivos[r] = _gh(f"/repos/{nombre}/contents/{urllib.parse.quote(r)}", {"ref": rama}, crudo=True)[:por_archivo]
+        except Exception:
+            pass
+    return {"rama": rama, "total": len(rutas), "rutas": rutas[:max_rutas], "archivos": archivos,
+            "temas": info.get("topics", [])}
 
 
 def buscar_repo_por_nombre(nombre: str) -> str | None:
@@ -188,6 +222,109 @@ def youtube_transcripcion(video_id: str, limite: int = 30000) -> str | None:
         return None
     texto = re.sub(r"\[(música|music|aplausos|applause|risas)\]", " ", texto, flags=re.I)
     return re.sub(r"\s+", " ", texto).strip()[:limite] or None
+
+
+def transcribir_audio(origen: Path, minutos: int = 25, limite: int = 30000) -> str | None:
+    """Lo que se dice en un audio o vídeo (los primeros «minutos»), con Whisper en Groq. None si no se puede."""
+    import json as _json
+    import subprocess as _sp
+    import tempfile
+    import urllib.request as _ur
+    import uuid
+    try:
+        from cerebro import API, CONFIG
+        clave = _json.loads(CONFIG.read_text()).get("api_key")
+    except Exception:
+        return None
+    if not clave:
+        return None
+    with tempfile.TemporaryDirectory() as d:
+        mp3 = Path(d) / "voz.mp3"                         # 32 kbps mono: 25 min ≈ 6 MB (Groq admite 25 MB)
+        try:
+            _sp.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(origen), "-t", str(minutos * 60), "-vn", "-ac", "1",
+                     "-ar", "16000", "-b:a", "32k", str(mp3)], timeout=300, check=True)
+        except Exception:
+            return None
+        f = uuid.uuid4().hex
+        cuerpo = (f'--{f}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3-turbo\r\n'
+                  f'--{f}\r\nContent-Disposition: form-data; name="file"; filename="voz.mp3"\r\n'
+                  "Content-Type: audio/mpeg\r\n\r\n").encode() + mp3.read_bytes() + f"\r\n--{f}--\r\n".encode()
+        req = _ur.Request(API + "/audio/transcriptions", data=cuerpo, headers={
+            "Authorization": f"Bearer {clave}", "Content-Type": f"multipart/form-data; boundary={f}",
+            "User-Agent": "Jarvis/1.0"})
+        try:
+            with _ur.urlopen(req, timeout=300) as r:
+                texto = (_json.load(r).get("text") or "").strip()
+        except Exception:
+            return None
+    return re.sub(r"\s+", " ", texto)[:limite] or None
+
+
+def estudios(consulta: str, n: int = 6) -> list[dict]:
+    """Estudios científicos sobre un tema (OpenAlex: gratis y sin clave; lo que usa Consensus por debajo, más o menos)."""
+    url = ("https://api.openalex.org/works?" + urllib.parse.urlencode(
+        {"search": consulta, "per-page": n, "filter": "has_abstract:true,type:article", "mailto": "jarvis@localhost"}))
+    req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        d = json.load(r)
+    out = []
+    for w in d.get("results", []):
+        inv = w.get("abstract_inverted_index") or {}
+        pos = sorted((p, palabra) for palabra, ps in inv.items() for p in ps)
+        out.append({"titulo": w.get("display_name", ""), "año": w.get("publication_year"),
+                    "citas": w.get("cited_by_count", 0), "revista": ((w.get("primary_location") or {}).get("source") or {}).get("display_name", ""),
+                    "url": w.get("doi") or w.get("id", ""), "resumen": " ".join(p for _, p in pos)[:1500]})
+    return out
+
+
+def palabras_con_tiempo(origen: Path) -> list[dict]:
+    """Cada palabra dicha con su momento exacto ([{"w": "hola", "a": 0.12, "b": 0.48}, …]), con Whisper en Groq.
+    [] si no se puede (sin clave, sin internet…)."""
+    import json as _json
+    import urllib.request as _ur
+    import uuid
+    try:
+        from cerebro import API, CONFIG
+        clave = _json.loads(CONFIG.read_text()).get("api_key")
+    except Exception:
+        return []
+    if not clave or not Path(origen).exists():
+        return []
+    f = uuid.uuid4().hex
+    campos = {"model": "whisper-large-v3-turbo", "language": "es", "response_format": "verbose_json",
+              "timestamp_granularities[]": "word"}
+    cuerpo = b"".join(f'--{f}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+                      for k, v in campos.items())
+    cuerpo += (f'--{f}\r\nContent-Disposition: form-data; name="file"; filename="voz.wav"\r\n'
+               "Content-Type: audio/wav\r\n\r\n").encode() + Path(origen).read_bytes() + f"\r\n--{f}--\r\n".encode()
+    req = _ur.Request(API + "/audio/transcriptions", data=cuerpo, headers={
+        "Authorization": f"Bearer {clave}", "Content-Type": f"multipart/form-data; boundary={f}", "User-Agent": "Jarvis/1.0"})
+    try:
+        with _ur.urlopen(req, timeout=60) as r:
+            d = _json.load(r)
+    except Exception:
+        return []
+    return [{"w": x.get("word", "").strip(), "a": float(x.get("start", 0)), "b": float(x.get("end", 0))}
+            for x in d.get("words", []) if x.get("word", "").strip()]
+
+
+def youtube_por_audio(video_id: str, minutos: int = 25, limite: int = 30000) -> str | None:
+    """Vídeos sin subtítulos: baja solo el audio con yt-dlp y lo transcribe. None si no se puede."""
+    import shutil as _sh
+    import subprocess as _sp
+    import tempfile
+    ytdlp = _sh.which("yt-dlp") or str(Path.home() / "jarvis/venv/bin/yt-dlp")
+    if not Path(ytdlp).exists():
+        return None
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            _sp.run([ytdlp, "-q", "-f", "bestaudio", "--no-playlist", "-o", str(Path(d) / "audio.%(ext)s"),
+                     "--download-sections", f"*0-{minutos * 60}", f"https://www.youtube.com/watch?v={video_id}"],
+                    timeout=600, check=True, capture_output=True)
+            origen = next(Path(d).glob("audio.*"))
+        except Exception:
+            return None
+        return transcribir_audio(origen, minutos, limite)
 
 
 def youtube_titulo(video_id: str) -> str:

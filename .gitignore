@@ -38,3 +38,6 @@ __pycache__/
 *.log
 .DS_Store
 Thumbs.db
+
+# lo necesita el instalador de Alexa
+!scripts/alexa/package.json

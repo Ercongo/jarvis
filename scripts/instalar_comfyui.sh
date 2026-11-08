@@ -43,6 +43,7 @@ ls -la "$M/checkpoints" "$M/vae_approx" | grep -E "safetensors|pth"
 
 paso "Servicio «comfyui» (no arranca solo)"
 mkdir -p "$HOME/.config/systemd/user"
+TOPE_MEM=$([ "$(awk '/MemTotal/{print int($2/1048576)}' /proc/meminfo)" -ge 12 ] && echo 9000M || echo 5500M)   # según la RAM
 cat > "$HOME/.config/systemd/user/comfyui.service" <<EOF
 [Unit]
 Description=ComfyUI para el asistente (solo 127.0.0.1:8188, con el procesador)
@@ -53,7 +54,7 @@ WorkingDirectory=$C
 ExecStart=$BASE/venv/bin/python main.py --cpu --listen 127.0.0.1 --port 8188 --disable-auto-launch --preview-method none
 Restart=no
 Nice=10
-MemoryMax=5500M
+MemoryMax=$TOPE_MEM
 EOF
 systemctl --user daemon-reload
 echo "  Listo. Pruébalo: dile al asistente «crea una imagen en local de un gato en la luna»."

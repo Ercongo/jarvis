@@ -1,0 +1,8 @@
+{
+  "name": "alexa-puente",
+  "private": true,
+  "description": "Puente del asistente con Alexa (luces, enchufes y Echo)",
+  "main": "puente.js",
+  "license": "MIT",
+  "dependencies": { "alexa-remote2": "8.1.1" }
+}

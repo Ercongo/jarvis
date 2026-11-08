@@ -7,6 +7,8 @@ def preguntar(txt, secreto=False, comprobar=None, ayuda=""):
     """Pregunta hasta que el valor tiene la forma esperada. Lo secreto no se ve: solo se dice cuántos caracteres llegaron."""
     while True:
         v = "".join((getpass.getpass if secreto else input)(txt).split())
+        if v.count("EAA") > 1:                           # pegado dos veces seguidas: vale la primera copia
+            v = "EAA" + v.split("EAA")[1]
         if secreto:
             print(f"   (recibidos {len(v)} caracteres)")
         if not comprobar or comprobar(v):
@@ -30,7 +32,8 @@ if input("¿Configurar Meta ahora? [s/N] ").lower().startswith("s"):
         paginas = _http("GET", f"{GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account&"
                                f"access_token={largo['access_token']}").get("data", [])
     except ErrorRed as e:
-        print("✖ Meta no lo acepta:", e); paginas = []
+        import re
+        print("✖ Meta no lo acepta:", re.sub(r"EAA\w+", "[token]", str(e))); paginas = []
     if paginas:
         for i, p in enumerate(paginas, 1):
             print(f"  {i}. {p['name']}" + ("  (con Instagram)" if p.get("instagram_business_account") else ""))
@@ -45,7 +48,24 @@ if input("¿Configurar Meta ahora? [s/N] ").lower().startswith("s"):
         print(f"✔ Página «{p['name']}» conectada" + (" con su Instagram." if c["meta"]["ig_id"] else
               ". ✖ No tiene Instagram enlazado: enlázalo en la página (Configuración → Cuentas vinculadas) y repite."))
     elif "meta" not in c:
-        print("✖ No veo ninguna página: marca en el Explorador los permisos de la lista y elige la página de Asuka.")
+        print("✖ No veo ninguna página de Facebook en esa cuenta.")
+        try:                                               # para saber por qué (no muestra nada secreto)
+            t = largo["access_token"]
+            yo = _http("GET", f"{GRAPH}/me?fields=name&access_token={t}")
+            per = _http("GET", f"{GRAPH}/me/permissions?access_token={t}").get("data", [])
+            dados = sorted(x["permission"] for x in per if x.get("status") == "granted")
+            faltan = [x for x in ("pages_show_list", "pages_read_engagement", "pages_manage_posts", "instagram_basic",
+                                  "instagram_content_publish", "business_management") if x not in dados]
+            print(f"  Cuenta del token: {yo.get('name')}")
+            print(f"  Permisos dados: {', '.join(dados) or 'ninguno'}")
+            if faltan:
+                print(f"  ✖ Faltan: {', '.join(faltan)}. Añádelos en el Explorador antes de «Generate Access Token».")
+            else:
+                print("  Los permisos están bien: en la ventana de Facebook no se marcó la página de Asuka, o esa página"
+                      " no la administra esta cuenta. Revísalo en facebook.com/settings → Integraciones comerciales, o"
+                      " en la página de Asuka → Configuración → Acceso a la página.")
+        except Exception as e:
+            print("  (No he podido ver los permisos:", type(e).__name__, ")")
 
 print("\n=== X ===")
 if input("¿Configurar X ahora? [s/N] ").lower().startswith("s"):

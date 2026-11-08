@@ -1,0 +1,49 @@
+﻿ASUKA EN DIRECTO  ·  tu cara y tu voz cambiadas por las de Asuka en la webcam, para Twitch
+==========================================================================================
+
+LO QUE HACE FALTA
+  · Un PC con tarjeta NVIDIA (RTX 3060 de 12 GB o mejor) y Windows 10/11.
+  · La webcam y un micro.
+  · Su modelo de voz (asuka.pth + asuka.index): se saca en Kaggle con «entrenar_voz_rvc_asuka.ipynb» (paso 0).
+
+0. LA VOZ (una vez; se puede hacer ya, desde este PC)
+  1. kaggle.com → Create → New Notebook → File → Import notebook → elige entrenar_voz_rvc_asuka.ipynb.
+  2. A la derecha: Accelerator «GPU T4 x2», Internet «On».
+     Input → Add input → tu dataset «voz-asuka-datos» (si ya no está: New dataset y sube voz-asuka-datos.zip
+     de esta carpeta).
+  3. «Run all». Unas 2 horas. Al terminar, en Output descarga asuka_voz_rvc.zip.
+  4. Descomprímelo en la carpeta «modelo_voz» de esta carpeta (quedan asuka.pth y asuka.index).
+
+1. INSTALAR (en el PC nuevo; unos 30-40 minutos, casi todo descargas)
+  1. Copia esta carpeta entera al PC nuevo.
+  2. Doble clic en INSTALAR.bat → «Sí» al permiso de administrador.
+  3. Cuando salga el instalador del cable de audio: «Install Driver». Reinicia el PC al terminar.
+  En el escritorio aparece «Asuka en directo».
+
+2. CADA DIRECTO
+  1. Doble clic en «Asuka en directo»: se abren tres cosas.
+  2. CARA (ventana de Deep-Live-Cam): la foto de Asuka ya está puesta. Elige tu webcam y pulsa «Live».
+     Se abre la vista previa con su cara.
+  3. VOZ (Applio, en el navegador): pestaña «Realtime»:
+       - Modelo: asuka.pth · Índice: asuka.index
+       - Entrada: tu micrófono · Salida: «CABLE Input (VB-Audio Virtual Cable)»
+       - Pulsa «Start». Habla: en el cable sale su voz.
+  4. OBS (solo la primera vez):
+       - Fuentes → + → «Captura de ventana» → la ventana «Preview» de Deep-Live-Cam.
+       - Fuentes → + → «Imagen» → C:\AsukaDirecto\marca_avatar_ia.png (encima de todo, esquina de abajo).
+       - Fuentes → + → «Captura de entrada de audio» → «CABLE Output».
+       - En el Mezclador, SILENCIA tu micrófono normal (el de «Audio del escritorio/Mic»): que solo salga el cable.
+       - Ajustes → Emisión → Servicio: Twitch → «Conectar cuenta» (con la cuenta asukakamado).
+       - Para el juego de la Xbox: «Captura de ventana» de la app Xbox o de la capturadora.
+  5. «Iniciar transmisión».
+
+REGLAS DEL DIRECTO
+  · La marca «✦ avatar IA en directo» se ve SIEMPRE (Twitch pide avisar del contenido sintético realista).
+  · Si alguien pregunta en serio si es IA: lo reconoce, con humor. Nunca lo niega.
+  · Antes de empezar, prueba 1 minuto grabando en OBS y escúchate: que no se cuele tu voz real.
+
+SI ALGO VA MAL
+  · La cara va lenta: en Deep-Live-Cam quita «Face Enhancer»; baja la webcam a 720p.
+  · La voz va con retraso: en Applio sube «Chunk size» un poco o baja la calidad; cierra programas.
+  · «CUDA» o «onnxruntime» da error: actualiza el controlador de NVIDIA y vuelve a pasar INSTALAR.bat.
+  · El registro de la instalación está en C:\AsukaDirecto\instalacion.log (mándamelo y lo miro).
